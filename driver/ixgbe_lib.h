@@ -1,5 +1,5 @@
-#define RX_PKT_BUFF_SIZ 512
-#define TX_PKT_BUFF_SIZ 512
+#define NUM_RX_QUEUES 512
+#define NUM_TX_QUEUES 512
 
 static inline void set_reg32(uint8_t *addr,int reg,uint32_t value){
     __asm__ volatile ("" : : : "memory");
@@ -29,6 +29,12 @@ static inline void wait_set_reg32(uint8_t *addr,int reg,uint32_t value){
     }
 }
 
-static inline void unset_reg32(uint8_t *addr,int reg,uint32_t value){
-    set_reg32(addr,reg,get_reg32(addr,reg) & ~value);
+static inline void set_flag32(uint8_t *addr,int reg,uint32_t flag){
+    set_reg32(addr,reg,get_reg32(addr,reg) | flag);
 }
+static inline void unset_flag32(uint8_t *addr,int reg,uint32_t flag){
+    set_reg32(addr,reg,get_reg32(addr,reg) & ~flag);
+}
+
+
+uintptr_t vtop(uintptr_t vaddr);

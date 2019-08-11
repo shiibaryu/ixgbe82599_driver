@@ -9,7 +9,7 @@ struct ixgbe_device{
     uint16_t num_rx_queues;
 }
 
-struct packet_buffer{
-    uint64_t *data_buffer;
-    uint16_t *length;
+struct dma_address{
+    uintptr_t virt_addr;
+    uintptr_t phy_addr;
 }
