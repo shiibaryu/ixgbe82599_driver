@@ -49,29 +49,32 @@ struct rx_queue{
 //PHYとLINKの設定
 void init_link(struct ixgbe_device *ix_dev)
 {
+    printf("start: init_link");
     //BX/SGMII LINKのセットアップ
     //AUTOCのなかのLink mode select fieldを適切な運用モードに
     set_reg32(ix_dev->addr,IXGBE_AUTOC,(get_reg32(ix_dev->addr,IXGBE_AUTOC) & ~IXGBE_AUTOC_LMS_MASK) | IXGBE_AUTOC_LMS_10G_SERIAL);
     set_reg32(ix_dev->addr,IXGBE_AUTOC,(get_reg32(ix_dev->addr,IXGBE_AUTOC) & ~IXGBE_AUTOC_10G_PMA_PMF_MASK) | IXGBE_AUTOC_10G_XAUI);
     set_flag32(ix_dev->addr,IXGBE_AUTOC,IXGBE_AUTOC_AN_RESTART);
+    printf("end: init_link");
 }
 
 //特定のレジスタをreadすると初期化されるっぽい？？？
 void init_stats(struct ixgbe_device *ix_dev)
 {
+    printf("start: init_stats");
     //good packet receive and transmit
     uint32_t rx_pkts = get_reg32(ix_dev->addr,IXGBE_GPRC);
     uint32_t tx_pkts = get_reg32(ix_dev->addr,IXGBE_GPTC);
     //good octet receive and transmit
     uint64_t rx_bytes = get_reg32(ix_dev->addr,IXGBE_GORCL) + (((uint64_t)get_reg32(ix_dev->addr,IXGBE_GORCH)) << 32);
     uint64_t tx_bytes = get_reg32(ix_dev->addr,IXGBE_GOTCL) + (((uint64_t)get_reg32(ix_dev->addr,IXGBE_GOTCH)) << 32);
-
+    printf("end: init_stats");
 }
 
 void init_rx_reg(struct ixgbe_device *ix_dev)
 {
     int i;
-
+    printf("start: init_rx_reg");
     set_reg32(ix_dev->addr,IXGBE_RXPBSIZE(0),IXGBE_RXPBSIZE_128KB);
     for(i=0;i<8;i++){
             set_reg32(ix_dev->addr,IXGBE_PXPBSIZE(i),0);
@@ -86,10 +89,13 @@ void init_rx_reg(struct ixgbe_device *ix_dev)
     set_flag32(ix_dev->addr,IXGBE_FCTRL,IXGBE_FCTRL_BAM);
     //jamboフレーム5000?
     //set_reg32(ixgbe->dev,IXGBE_MAXFRS,5000);
+
+    printf("end: init_tx_reg");
 }
 
 void init_rx_queue(struct ixgbe_device *ix_dev)
 {
+    printf("start: init_rx_queue");
     //ring bufferの確保と初期化
     //それに伴うレジスタの初期化
     //それぞれのdescriptorは16bitのサイズらしい
@@ -127,10 +133,12 @@ void init_rx_queue(struct ixgbe_device *ix_dev)
             //DCA -> direct cache access
             clear_flag32(ix_dev->addr,IXGBE_DCA_RXCTRL(i), 0<<12);
     }
+    printf("end: init_rx_queue");
 }
 
 void init_rx(struct ixgbe_device *ix_dev)
 {
+    printf("start: init_tx");
     //receiveを止める
     unset_flag32(ix_dev->addr,IXGBE_RXCTRL,IXGBE_RXCTRL_RXEN);
     //初期化処理
@@ -141,10 +149,12 @@ void init_rx(struct ixgbe_device *ix_dev)
     init_rx_queue(ix_dev);
     //receive再開
     set_flag32(ix_dev->addr,IXGBE_RXCTRL,IXGBE_RXCTRL_RXEN);
+    printf("end: init_tx");
 }
 
 void init_tx_reg(struct ixgbe_device *ix_dev)
 {
+    printf("start: init_tx_reg");
     //IXGBE_HLREG0に設定したい内容のフラグを立てるためにorをとって立てる
     //今回だとcrcオフロードとパケットパディング 
     set_flag32(ix_dev->addr,IXGBE_HLREG0,IXGBE_HLREG0_TXCRCEN | IXGBE_HLREG0_TXPADEN);
@@ -160,10 +170,12 @@ void init_tx_reg(struct ixgbe_device *ix_dev)
     set_reg32(ix_dev->addr,IXGBE_DTMXSZRQ,0xFFFF);
     //0にしろと書かれていたので
     unset_flag32(ix_dev->addr,IXGBE_RTTDCS,IXGBE_RTTDCS_ARBDIS);
+    printf("end: init_tx_reg");
 }
 
 void init_tx_queue(struct ixgbe_device *ix_dev)
 {
+    printf("start: init_tx_queue");
     uint16_t i;
     for(i=0;i<ix_dev->num_tx_queues;i++){
         //キューの割り当て
@@ -191,14 +203,17 @@ void init_tx_queue(struct ixgbe_device *ix_dev)
         txdctl |= (36 | (8<<8) | (4<<16));
         set_reg32(ix_dev->addr,IXGBE_TXDCTL(i),txdctl);
     }
+    printf("end: init_tx_queue");
 }
 
 void init_tx(struct ixgbe_device *ix_dev)
 {
+    printf("start: init_tx")
     init_tx_reg(ix_dev);
     init_tx_queue(ix_dev);
     //enable dma
     set_reg32(ix_dev->addr,IXGBE_DMATXCTL,IXGBE_DMATXCTL_TE);
+    printf("end: init_tx");
 }
 
 void start_rx_queue(struct ixgbe_device *ix_dev,uint16_t i)
@@ -227,10 +242,13 @@ void start_rx_queue(struct ixgbe_device *ix_dev,uint16_t i)
     //もう一回初期化？？
     set_reg32(ix_dev->addr,IXGBE_RDH(i),0);
     set_reg32(ix_:dev->addr,IXGBE_RDT(i),rxq->num_entries - 1);
+    
+    printf("start rx queue %d",i);
 }
 
 void start_tx_queue(struct ixgbe_device *ix_dev,int i)
 {
+        printf("start: start_tx_queue %d",i);
         struct tx_queue *txq = ((struct tx_queue*)(ix_dev->tx_queue)) + i;
 
         set_reg32(ix_dev->addr,IXGBE_TDH(i),0);
@@ -238,10 +256,12 @@ void start_tx_queue(struct ixgbe_device *ix_dev,int i)
 
         set_flag32(ix_dev->addr,IXGBE_TXDCTL(i),IXGBE_TXDCTL_ENABLE);
         wait_enable_reset(ix_dev->addr,IXGBE_TXDCTL(i),IXGBE_TXDCTL_ENABLE);
+        printf("end: start_tx_queue %d",i);
 }
 
 uint32_t ixgbe_get_link_speed(struct *ixgbe_device ix_dev)
 {
+        printf("start: ixgbe_get_link_speed");
         uint32_t link_speed = get_reg32(ix_dev->addr,IXGBE_LINKS);
         if(!(link_speed & IXGBE_LINKS_UP)){
                 return 0;
@@ -256,10 +276,12 @@ uint32_t ixgbe_get_link_speed(struct *ixgbe_device ix_dev)
                 default:
                     return 0;
         }
+        printf("end: ixgbe_get_link_speed");
 }
 
 void wait_for_link(struct ixgbe_device *ix_dev)
 {
+        printf("start: wait_for_link");
         printf("wait for link ...");
         uint32_t max_wait = 10000000;
         uint32_t poll_int = 100000;
@@ -270,11 +292,14 @@ void wait_for_link(struct ixgbe_device *ix_dev)
                 max_wait -= poll_int;
         }
         printf("Link speed is %d Mbit/s",speed);
+        printf("end: wait_for_link");
 }
 
 /*initialization sequence*/
 void do_init_seq(struct ixgbe_device *ix_dev)
 {
+    printf("start: do_init_seq");
+
     //EIMC registerに書き込めば、割り込み禁止
     set_reg32(ix_dev->addr,IXGBE_EIMC,0x7FFFFFFFF);
 
@@ -320,5 +345,7 @@ void do_init_seq(struct ixgbe_device *ix_dev)
 
     //リンク待ち
     wait_for_link(ix_dev);
+
+    printf("end: do_init_sequence");
 }
 
