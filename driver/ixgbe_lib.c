@@ -54,3 +54,29 @@ struct dma_address allocate_dma_address(uint32_t ring_size)
            .phy_addr =  vtop(virt_addr);
    }
 }
+
+/*ディスクリプターにパケットが届いた時にそれを格納するためのメモリープール*/
+struct mempool *allocate_mempool_mem(uint32_t num_entries,uint32_t entry_size)
+{
+    struct dma_address dma_addr;
+    entry_size = entry_size ? entry_size : 2048;
+
+    struct mempool *mempool = (struct mempool*)malloc(sizeof(struct mempool) + num_entries * sizeof(uint32_t));
+    
+    dma_addr = allocate_dma_address(num_entries*entry_size);
+    mempool->num_entries = num_entries;
+    mempool->buf_entries = entry_size;
+    mempool->base_addr   = dma_addr.virt_addr;
+    mempool->free_stack_top = num_entries;
+
+    for(uint32_t i=0;i<num_entries;i++){
+        mempool->free_stack[i] = i;
+        struct pkt_buf *buf = (struct pkt_buf *)(((uint8_t *)mempool->base_addr) + i * entry_size);
+        buf->buf_addr_phy = vtop((uintptr_t)buf);
+        buf->mempool_idx = i;
+        buf->mempool = mempool
+        buf->size = 0;
+    }
+    
+    return mempool;
+}

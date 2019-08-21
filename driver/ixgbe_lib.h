@@ -1,5 +1,8 @@
 #define NUM_RX_QUEUES 512
 #define NUM_TX_QUEUES 512
+#define MAX_QUEUES 64
+
+
 
 static inline void set_reg32(uint8_t *addr,int reg,uint32_t value){
     __asm__ volatile ("" : : : "memory");
