@@ -3,9 +3,12 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
-#include "ixgbe_data.h"
-#include "ixgbe_lib.h"
+#include "data.h"
+#include "lib.h"
 #include "ixgbe.h"
 /*
 NICへの割り込み禁止
@@ -349,3 +352,54 @@ void do_init_seq(struct ixgbe_device *ix_dev)
     printf("end: do_init_sequence");
 }
 
+struct ixgbe_device start_ixgbe(const char *pci_addr,uint16_t rx_queues,uint16_t tx_queues)
+{
+   if(getuid()){
+       warn("Not running as root,this will probably fail");
+   }
+   if(rx_queues > MAX_QUEUES){
+       error("Rx queues %d exceed MAX_QUEUES",rx_queues);
+   }
+   if(tx_queues > MAX_QUEUES){
+      error("Tx queues %d exceed MAX_QUEUES",tx_queues);
+   }
+
+   struct ixgbe_device ix_dev;
+   memset(ix_dev,0,sizeof(struct ixgbe_device));
+
+   //strdup()->文字列をコピーして返す
+   ix_dev.pci_addr = strdup(pci_addr);
+
+   char path[PATH_MAX];
+   sprintf(path,PATH_MAX,"/sys/bus/pci/devices/%s/iommu_group",pci_addr);
+   struct stat buf;
+   ix_dev.vfio = stat(path,&buf) == 0;
+   if(ix_dev.vfio){
+           ix_dev.vfio_fd = init_vfio(pci_addr);
+           if(ix_dev.vfio_fd < 0){
+                   error("faled to get vfio_fd");
+           }
+   }
+   ix_dev.driver_name = driver_name;
+   ix_dev.num_rx_queues = rx_queues;
+   ix_dev.num_tx_queues = tx_queues;
+   ix_dev.rx_batch = ixgbe_rx_batch;
+   ix_dev.tx_batch = ixgbe_tx_batch;
+   ix_dev.read_stats = ixgbe_read_stats;
+   ix_dev.set_promisc = ixgbe_set_promisc;
+   ix_dev.get_link_speed = ixgbe_get_link_speed;
+
+   if(ix_dev.vfio){
+           ix_dev.addr = vfio_map_region(ix_dev.vfio_fd,VFIO_PCI_BAR0_REGION_INDEX);
+   }
+   else{
+           ix_dev.addr = pci_map_resource(pci_addr);
+   }
+    
+    ix_dev.rx_queues = calloc(rx_queues,sizeof(struct ixgbe_rx_queue) + sizeof(void *) * MAX_RX_QUEUE_ENTRIES);
+    ix_dev.tx_queues = calloc(tx_queues,sizeof(struct ixgbe_tx_queue) + sizeof(void *) * MAX_TX_QUEUE_ENTRIES);
+
+    do_init_seq(&ix_dev);
+
+    return ix_dev;
+}

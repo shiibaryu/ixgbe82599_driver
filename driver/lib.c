@@ -80,3 +80,10 @@ struct mempool *allocate_mempool_mem(uint32_t num_entries,uint32_t entry_size)
     
     return mempool;
 }
+
+void pkt_buf_free(struct pkt_buf *buf)
+{
+    struct mempool *mempool = buf->mempool;
+    mempool->free_stack[mempool->free_stack_top++] = buf->mempool_idx;
+}
+
