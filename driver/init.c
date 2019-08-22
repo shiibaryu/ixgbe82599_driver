@@ -393,7 +393,8 @@ struct ixgbe_device start_ixgbe(const char *pci_addr,uint16_t rx_queues,uint16_t
            ix_dev.addr = vfio_map_region(ix_dev.vfio_fd,VFIO_PCI_BAR0_REGION_INDEX);
    }
    else{
-           ix_dev.addr = pci_map_resource(pci_addr);
+           printf("can't use vfio");
+           return -1;
    }
     
     ix_dev.rx_queues = calloc(rx_queues,sizeof(struct ixgbe_rx_queue) + sizeof(void *) * MAX_RX_QUEUE_ENTRIES);
