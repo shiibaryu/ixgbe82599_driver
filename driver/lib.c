@@ -81,9 +81,126 @@ struct mempool *allocate_mempool_mem(uint32_t num_entries,uint32_t entry_size)
     return mempool;
 }
 
+struct pkt_buf *alloc_pkt_buf(struct mempool *mempool,struct pkt_buf *buf[],uint32_t num_bufs)
+{
+   if(mempool->free_stack_top < num_bufs){
+           warn("memory pool %p only has %d free bufs, requested %d",mempool,mempool->buf_size);
+           num_bufs = mempool->free_stack_top;
+   }
+    for(uint32_t i=0;i<num_bufs;i++){
+            uint32_t entry_id = mempool->free_stack[--mempool->free_stack_top];
+            buf[i] = (struct pkt_buf*)(((uint8_t*)mempool->base_addr) + entry_id * mempool->buf_size);
+    }
+    return buf;
+}
 void pkt_buf_free(struct pkt_buf *buf)
 {
     struct mempool *mempool = buf->mempool;
     mempool->free_stack[mempool->free_stack_top++] = buf->mempool_idx;
 }
 
+
+#define wrap_ring(index,ring_size) (uint16_t)((index+1)&(ring_size-1))
+
+uint32_t rx_batch(struct ixgbe_dev *ix_dev,uint16_t queue_id,struct pkt_buff *bufs[],uint32_t num_buf)
+{
+    //datasheet 7.1
+    //パケットの確認
+    //addressのフィルタリング(今回はなし)
+    //DMA queue assignment
+    //paketをstore
+    //ホストメモリーのreceive queueにデータをおくつ
+    //receive descriptorの状態更新(RDH,RDTを動かしたりとか)
+
+    struct rx_queue *rxq = ((struct rx_queue *)(ix_dev->rx_queues)) + queue_id;
+    uint16_t rx_index = rxq->rx_index;
+    uint16_t prev_rx_index = rxq->rx_index;
+
+    for(uint32_t i=0;i<num_buf;i++){
+            volatile union ixgbe_adv_rx_desc *rxd = rxq->descriptors + rx_index;
+            if(rxd->wb.upper.status_error & IXGBE_RXDADV_STAT_DD){
+                    if(!(rxd->wb.upper.status_error & IXGBE_RXDADV_STAT_EOP)){
+                            error("multi_segment packt not supported!");
+                    }
+                union ixgbe_adv_rx_desc desc = *rxd;
+                struct pkt_buf *buf = (struct pkt_buf *)queue->virtual_address[rx_index];
+                buf->size = desc.wb.upper.length;
+
+                //そのポインタをread.pkt_addrに登録
+                struct pkt_buf *buf = NULL;
+                struct pkt_buf *p_buf = alloc_pkt_buf(rxq->mempool,&buf,1);
+                if(!p_buf){
+                    perror("failed to allocate pkt_buf");
+                    return -1;
+                }
+            
+                rxd->read.pkt_addr = p_buf->buf_addr_phy + offsetof(struct pkt_buf,data);
+                rxd->read.hdr_addr = 0;
+                rxq->virtual_address[rx_index] = p_buf;
+                bufs[i]=buf;
+                prev_rx_index = rx_index;
+                rx_index = wrap_ring(rx_index,rxq->num_entries);
+            }
+            else{break;}
+    }
+    if(rx_index != prev_rx_index){
+            set_reg32(ix_dev->addr,IXGBE_RDT(queue_id),last_rx_index);
+            rxq->rx_index = rx_index;
+    }
+    return i;
+}
+
+uint32_t tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *bufs[],uint32_t num_bufs)
+{
+    struct tx_queue *txq = ((struct tx_queue*)(ix_dev->tx_queues)) + queue_id;
+    uint16_t tx_index = txq->tx_index;
+    uint16_t clean_index = txq->clean_index;
+
+    while(true){
+            int32_t cleanable = tx_index - clean_index;
+            if(cleanable < 0){
+                    cleanable = txq->num_entries + cleanble;
+            }
+            if(cleanable < TX_CLEAN_BATCH){
+                    break;
+            }
+            int cleanup_to = clean_index + TX_CLEAN_BATCH - 1;
+            if(cleanup_to >= txq->num_entries){
+                    cleanup_to -= txq->num_entries;
+            }
+            volatile union ixgbe_adv_tx_desc *txd = txq->descriptors + cleanup_to;
+            uint32_t status = txd->wb.status;
+            if(status & IXGBE_ADVTXD_STAT_DD){
+                    int32_t i = clean_index;
+                    while(true){
+                            struct pkt_buf *buf = txq->virtual_address[i];
+                            pkt_buf_free(buf);
+                            if(i==cleanup_to){
+                                    break;
+                            }
+                            i = wrap_ring(i,txq->num_entries);
+                    }
+                    clean_index = wrap_ring(cleanup_to,txq->num_entries);
+            }
+            else{break;}
+    }
+    txq->clean_index = clean_index;
+    uint32_t sent;
+    for(sent=0;sent<num_bufs;sent++){
+            uint32_t next_index = wrap_ring(tx_index,txq->num_entries);
+            if(clean_index == next_index){
+                    break;
+            }
+            struct pkt_buf *buf = bufs[sent];
+            txq->virtual_address[tx_index] = (void *)buf;
+            volatile union ixgbe_adv_tx_desc *txd = txq->descriptors + tx_index;
+            txq->index = next_index;
+            txd->read.buffer_addr = buf->buf_addr_phy + offsetof(struct pkt_buf,data);
+            txd->read.cmd_type_len = IXGBE_ADVTXD_DCMD_EOP | IXGBE_ADVTXD_DCMD_RS | IXGBE_ADVTXD_DCMD_IFCS | IXGBE_ADVTXD_DCMD_DEXT | IXGBE_ADVTXD_DTYPE_DATA | buf->size;
+            txd->read.olinfo_status = buf->size >> IXGBE_ADVTXD_PAYLEN_SHIFT;
+    }
+
+    set_reg32(ix_dev->addr,IXGBE_TDT(queue_id),tx_index);
+
+    return sent;
+}

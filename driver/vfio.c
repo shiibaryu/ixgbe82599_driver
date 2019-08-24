@@ -1,3 +1,20 @@
+#include <erron.h>
+#include <fcntl.h>
+#include <libgen.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+
+#include <linux/limits.h>
+#include <linux/vfio.h>
+#include <linux/ioctl.h>
+#include <linux/mman.h>
+#include <linux/stat.h>
+
+#include <driver/device.h>
+
 int group_id=0;
 
 void vfio_enable_dma(int vfio_fd)

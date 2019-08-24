@@ -244,7 +244,7 @@ void start_rx_queue(struct ixgbe_device *ix_dev,uint16_t i)
     wait_enable_reset(ix_dev->addr,IXGBE_RXDCTL(i),IXGBE_RXDCTL_ENABLE);
     //もう一回初期化？？
     set_reg32(ix_dev->addr,IXGBE_RDH(i),0);
-    set_reg32(ix_:dev->addr,IXGBE_RDT(i),rxq->num_entries - 1);
+    set_reg32(ix_dev->addr,IXGBE_RDT(i),rxq->num_entries - 1);
     
     printf("start rx queue %d",i);
 }
@@ -397,10 +397,34 @@ struct ixgbe_device start_ixgbe(const char *pci_addr,uint16_t rx_queues,uint16_t
            return -1;
    }
     
-    ix_dev.rx_queues = calloc(rx_queues,sizeof(struct ixgbe_rx_queue) + sizeof(void *) * MAX_RX_QUEUE_ENTRIES);
-    ix_dev.tx_queues = calloc(tx_queues,sizeof(struct ixgbe_tx_queue) + sizeof(void *) * MAX_TX_QUEUE_ENTRIES);
+    ix_dev.rx_queues = calloc(rx_queues,sizeof(struct rx_queue) + sizeof(void *) * MAX_RX_QUEUE_ENTRIES);
+    ix_dev.tx_queues = calloc(tx_queues,sizeof(struct tx_queue) + sizeof(void *) * MAX_TX_QUEUE_ENTRIES);
 
     do_init_seq(&ix_dev);
 
     return ix_dev;
+}
+
+int pci_open_resource(const char *pci_addr,const char *resource,int flags)
+{
+    char path[PATH_MAX];
+    snprintf(path,PATH_MAX,"/sys/bus/pci/devices/%s%s",pci_addr,resource);
+    if((int fd = open(path,flags)) < 0){
+            perror("failed to open file descriptor");
+            return -1;
+    }
+    return fd;
+}
+struct ixgbe_device *do_ixgbe(const char *pci_addr,uint16_t rx_queue,uint16_t tx_queue)
+{
+    int config = pci_open_resource(pci_addr,"config",O_RDONLY);
+    uint16_t vendor_id = read_io16(config,0);
+    uint16_t device_id = read_io16(config,2);
+    uint32_t class_id  = read_io32(config,8) >> 24;
+    close(config);
+    if(class_id != 2){
+            perror("This device is not a NIC.");
+    }
+
+    return start_ixgbe(pci_addr,rx_queues,tx_queues);
 }
