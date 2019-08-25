@@ -1,4 +1,4 @@
-#include <erron.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <libgen.h>
 #include <stddef.h>
@@ -6,16 +6,14 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-
 #include <linux/limits.h>
 #include <linux/vfio.h>
-#include <linux/ioctl.h>
-#include <linux/mman.h>
-#include <linux/stat.h>
-
-#include <driver/device.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 
 int group_id=0;
+ssize_t MIN_DMA_MEMORY = 4096;
 
 void vfio_enable_dma(int vfio_fd)
 {
@@ -43,7 +41,7 @@ int init_vfio(char *pci_addr)
     strncat(path,"iommu_group",sizeof(path)-strlen(path) - 1);
 
     if((ret = readlink(path,iommu_group_path,sizeof(iommu_group_path))) == -1){perror("readlink");return -1;}
-    iommu_group_path[len] = "\0";
+    iommu_group_path[ret] = '\0';
 
     unsigned short flag = 0;
     int container = get_vfio_container();
@@ -79,7 +77,7 @@ int init_vfio(char *pci_addr)
             ret = ioctl(container,VFIO_SET_IOMMU,VFIO_TYPE1_IOMMU);
     }
 
-    int vfio_fd = ioctl(vfio_gfd,VFIO_GROUP_GET_DEVICE_ID_FD,pci_addr);
+    int vfio_fd = ioctl(vfio_gfd,VFIO_GROUP_GET_DEVICE_FD,pci_addr);
     vfio_enable_dma(vfio_fd);
 
     return vfio_fd;
@@ -87,10 +85,11 @@ int init_vfio(char *pci_addr)
 
 uint8_t *vfio_map_region(int vfio_fd,int region_index)
 {
+   int ret;
    struct vfio_region_info region_info = {.argsz = sizeof(region_info)};
    region_info.index = region_index;
 
-   if((int ret = ioctl(vfio_fd,VFIO_DEVICE_GET_REGION_INFO,&region_info)) == -1){
+   if((ret = ioctl(vfio_fd,VFIO_DEVICE_GET_REGION_INFO,&region_info))== -1){
            return MAP_FAILED;
    }
    return (uint8_t *)mmap(NULL,region_info.size,PROT_READ|PROT_WRITE,MAP_SHARED,vfio_fd,region_info.offset);
@@ -102,7 +101,7 @@ uint64_t vfio_map_dma(void *vaddr,uint32_t size)
    struct vfio_iommu_type1_dma_map dma_map ={
            .vaddr = (uint64_t)vaddr,
            .iova  = iova,
-           .size  = size < MIN_DMA_FLAG_READ ? MIN_DMA_MEMORY : size,
+           .size  = size < MIN_DMA_MEMORY ? MIN_DMA_MEMORY : size,
            .argsz = sizeof(dma_map),
            .flags = VFIO_DMA_MAP_FLAG_READ | VFIO_DMA_MAP_FLAG_WRITE};
    int container = get_vfio_container();
@@ -114,7 +113,7 @@ uint64_t vfio_map_dma(void *vaddr,uint32_t size)
 uint64_t vfio_unmap_dma(int vfio_fd,uint64_t iova,uint32_t size)
 {
    struct vfio_iommu_type1_dma_unmap dma_unmap = {
-           .argsz = sizeof(dma_unmap);
+           .argsz = sizeof(dma_unmap),
            .flags = VFIO_DMA_MAP_FLAG_READ | VFIO_DMA_MAP_FLAG_WRITE,
            .iova  = iova,
            .size  = size

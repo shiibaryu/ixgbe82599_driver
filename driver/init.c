@@ -6,10 +6,17 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <sys/file.h>
+#include <linux/limits.h>
+#include <linux/vfio.h>
 
-#include "data.h"
-#include "lib.h"
 #include "ixgbe.h"
+#include "lib.h"
+#include "struct.h"
+#include "vfio.h"
 /*
 NICへの割り込み禁止
 デバイスのリセットとConfigurationレジスタの設定
@@ -20,34 +27,34 @@ transmitの初期化
 割り込みを許可
 */
 
-const char *driver_name = "ixgbe82599";
+char *driver_name = "ixgbe82599";
 const int MAX_RX_QUEUE_ENTRIES = 4096;
 const int MAX_TX_QUEUE_ENTRIES = 4096;
 
 const int NUM_RX_QUEUE_ENTRIES = 512;
-const int NUM_RX_QUEUE_ENTRIES = 512;
+const int NUM_TX_QUEUE_ENTRIES = 512;
 
 const int PKT_BUF_ENTRY_SIZE = 2048;
 const int MIN_MEMPOOL_ENTRIES = 4096;
 
 const int TX_CLEAN_BATCH = 32;
 
-struct tx_queue{
+/*struct tx_queue{
     volatile union ixgbe_adv_tx_desc *descriptors;
     struct mempool *mempool;
     uint16_t num_entries;
     uint16_t clean_index;
     uint16_t tx_index;
     void *virtual_address[];
-}
+};
 
 struct rx_queue{
     volatile union ixgbe_adv_rx_desc *descriptors;
-    struct mempool *mempool
+    struct mempool *mempool;
     uint16_t num_entries;
     uint16_t rx_index;
     void *virtual_address[];
-}
+};*/
 
 //PHYとLINKの設定
 void init_link(struct ixgbe_device *ix_dev)
@@ -56,7 +63,7 @@ void init_link(struct ixgbe_device *ix_dev)
     //BX/SGMII LINKのセットアップ
     //AUTOCのなかのLink mode select fieldを適切な運用モードに
     set_reg32(ix_dev->addr,IXGBE_AUTOC,(get_reg32(ix_dev->addr,IXGBE_AUTOC) & ~IXGBE_AUTOC_LMS_MASK) | IXGBE_AUTOC_LMS_10G_SERIAL);
-    set_reg32(ix_dev->addr,IXGBE_AUTOC,(get_reg32(ix_dev->addr,IXGBE_AUTOC) & ~IXGBE_AUTOC_10G_PMA_PMF_MASK) | IXGBE_AUTOC_10G_XAUI);
+    set_reg32(ix_dev->addr,IXGBE_AUTOC,(get_reg32(ix_dev->addr,IXGBE_AUTOC) & ~IXGBE_AUTOC_10G_PMA_PMD_MASK) | IXGBE_AUTOC_10G_XAUI);
     set_flag32(ix_dev->addr,IXGBE_AUTOC,IXGBE_AUTOC_AN_RESTART);
     printf("end: init_link");
 }
@@ -80,11 +87,11 @@ void init_rx_reg(struct ixgbe_device *ix_dev)
     printf("start: init_rx_reg");
     set_reg32(ix_dev->addr,IXGBE_RXPBSIZE(0),IXGBE_RXPBSIZE_128KB);
     for(i=0;i<8;i++){
-            set_reg32(ix_dev->addr,IXGBE_PXPBSIZE(i),0);
+            set_reg32(ix_dev->addr,IXGBE_RXPBSIZE(i),0);
     }
 
     set_flag32(ix_dev->addr,IXGBE_HLREG0,IXGBE_HLREG0_RXCRCSTRP);
-    set_flag32(ix_dev->addr,IXGBE_RDRXCTL,IXGBE_HLREG0_CRCSTRIP);
+    set_flag32(ix_dev->addr,IXGBE_RDRXCTL,IXGBE_RDRXCTL_CRCSTRIP);
 
     //broadcastとjamboフレームのレジスタセット
     //broadcastのセット FCTRL->filter control register(receive register)
@@ -113,14 +120,14 @@ void init_rx_queue(struct ixgbe_device *ix_dev)
 
         //bufferを割り当てるには、キューのサイズ(descriptor単体)とその個数でかける
         uint32_t ring_size = sizeof(union ixgbe_adv_rx_desc) * NUM_RX_QUEUES;
-        struct dma_address dma_addr = allocate_dma_addr(ring_size);
+        struct dma_address dma_addr = allocate_dma_address(ring_size);
         
         //DMAアクティベーション初期の時、メモリにアクセスされることを防ぐために仮想アドレスを初期化?
         memset(dma_addr.virt_addr,-1,ring_size);
 
         //baseアドレスの計算
         set_reg32(ix_dev->addr,IXGBE_RDBAL(i),(uint32_t)(0xFFFFFFFFull & dma_addr.phy_addr));
-        set_reg32(ix_dev->addr,IXGBE_RDBAH(i),(uint32_t)(dma_addr.phy_addr >> 32);
+        set_reg32(ix_dev->addr,IXGBE_RDBAH(i),(uint32_t)(dma_addr.phy_addr >> 32));
 
         //長さの計算
         set_reg32(ix_dev->addr,IXGBE_RDLEN(i),ring_size);
@@ -132,9 +139,9 @@ void init_rx_queue(struct ixgbe_device *ix_dev)
 
     //rxをenableする前にやっておくこと
     set_flag32(ix_dev->addr,IXGBE_CTRL_EXT,IXGBE_CTRL_EXT_NS_DIS);
-    for(uint16_t i=0;i< ix_dev->num_rx_queue;i++){
+    for(uint16_t i=0;i< ix_dev->num_rx_queues;i++){
             //DCA -> direct cache access
-            clear_flag32(ix_dev->addr,IXGBE_DCA_RXCTRL(i), 0<<12);
+            unset_flag32(ix_dev->addr,IXGBE_DCA_RXCTRL(i), 0<<12);
     }
     printf("end: init_rx_queue");
 }
@@ -170,7 +177,7 @@ void init_tx_reg(struct ixgbe_device *ix_dev)
     //DCB->data center bridging(データセンターのトランスポートのロスレスのイーサネット拡張らしい
     //つまりいらない？
     //DCBとVT(virtualization)なし
-    set_reg32(ix_dev->addr,IXGBE_DTMXSZRQ,0xFFFF);
+    set_reg32(ix_dev->addr,IXGBE_DTXMXSZRQ,0xFFFF);
     //0にしろと書かれていたので
     unset_flag32(ix_dev->addr,IXGBE_RTTDCS,IXGBE_RTTDCS_ARBDIS);
     printf("end: init_tx_reg");
@@ -195,7 +202,10 @@ void init_tx_queue(struct ixgbe_device *ix_dev)
 
         //長さセット
         set_reg32(ix_dev->addr,IXGBE_TDLEN(i),tx_ring);
-        set_flag32(ix_dev->addr,IXGBE_TXDCTL(i),IXGBE_TXDCRL_ENABLE);
+        //set_flag32(ix_dev->addr,IXGBE_TXDCTL(i),IXGBE_TXDCRL_ENABLE);
+        
+        printf("tx ring %d phy addr ; 0x%012lX",i,dma_addr.phy_addr);
+        printf("tx ring %d virt addr ; 0x%012lX",i,(uintptr_t)dma_addr.virt_addr);
 
         //高い性能とpcieの低レイテンシを得るためのtransmit control descriptorのmagic
         //dpdkで使われてるっぽい
@@ -205,13 +215,17 @@ void init_tx_queue(struct ixgbe_device *ix_dev)
         txdctl &= ~(0x3F | (0x3F << 8) | (0x3F << 16));
         txdctl |= (36 | (8<<8) | (4<<16));
         set_reg32(ix_dev->addr,IXGBE_TXDCTL(i),txdctl);
+
+        struct tx_queue *txq = ((struct tx_queue*)ix_dev->tx_queues) + i;
+        txq->num_entries = NUM_TX_QUEUE_ENTRIES;
+        txq->descriptors = (union ixgbe_adv_tx_desc*)dma_addr.virt_addr;
     }
     printf("end: init_tx_queue");
 }
 
 void init_tx(struct ixgbe_device *ix_dev)
 {
-    printf("start: init_tx")
+    printf("start: init_tx");
     init_tx_reg(ix_dev);
     init_tx_queue(ix_dev);
     //enable dma
@@ -226,13 +240,13 @@ void start_rx_queue(struct ixgbe_device *ix_dev,uint16_t i)
     struct rx_queue *rxq = ((struct rx_queue*)(ix_dev->rx_queues)) + i;
     int mempool_size = NUM_RX_QUEUE_ENTRIES + NUM_TX_QUEUE_ENTRIES;
 
-    rxq->mempool = alloc_mem_for_mempool(mempool_size,PKT_BUF_ENTRY_SIZE);
+    rxq->mempool = allocate_mempool_mem(mempool_size,PKT_BUF_ENTRY_SIZE);
 
     for(int i=0;i<rxq->num_entries;i++){
             volatile union ixgbe_adv_rx_desc *rxd = rxq->descriptors + i;
-            struct pkt_buf *buf = pkt_buf_alloc(rxq->mempool);
+            struct pkt_buf *buf = alloc_pkt_buf(rxq->mempool);
             if(!buf){
-                  error("failed to allocate buf");
+                  printf("failed to allocate buf");
             }
             //offsetof(型,メンバ指示子); メンバ指示子までのオフセット得られる
             rxd->read.pkt_addr = buf->buf_addr_phy + offsetof(struct pkt_buf,data);
@@ -240,7 +254,7 @@ void start_rx_queue(struct ixgbe_device *ix_dev,uint16_t i)
             rxq->virtual_address[i] = buf;
     }
     //rx queueをenable
-    set_flags32(ix_dev->addr,IXGBE_RXDCTL(i),IXGBE_RXDCTL_ENABLE);
+    set_flag32(ix_dev->addr,IXGBE_RXDCTL(i),IXGBE_RXDCTL_ENABLE);
     wait_enable_reset(ix_dev->addr,IXGBE_RXDCTL(i),IXGBE_RXDCTL_ENABLE);
     //もう一回初期化？？
     set_reg32(ix_dev->addr,IXGBE_RDH(i),0);
@@ -252,7 +266,7 @@ void start_rx_queue(struct ixgbe_device *ix_dev,uint16_t i)
 void start_tx_queue(struct ixgbe_device *ix_dev,int i)
 {
         printf("start: start_tx_queue %d",i);
-        struct tx_queue *txq = ((struct tx_queue*)(ix_dev->tx_queue)) + i;
+        struct tx_queue *txq = ((struct tx_queue*)(ix_dev->tx_queues)) + i;
 
         set_reg32(ix_dev->addr,IXGBE_TDH(i),0);
         set_reg32(ix_dev->addr,IXGBE_TDT(i),txq->num_entries - 1);
@@ -262,7 +276,111 @@ void start_tx_queue(struct ixgbe_device *ix_dev,int i)
         printf("end: start_tx_queue %d",i);
 }
 
-uint32_t ixgbe_get_link_speed(struct *ixgbe_device ix_dev)
+
+#define wrap_ring(index,ring_size) (uint16_t)((index+1)&(ring_size-1))
+
+uint32_t rx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *bufs[],uint32_t num_buf)
+{
+    //datasheet 7.1
+    //パケットの確認
+    //addressのフィルタリング(今回はなし)
+    //DMA queue assignment
+    //paketをstore
+    //ホストメモリーのreceive queueにデータをおくつ
+    //receive descriptorの状態更新(RDH,RDTを動かしたりとか)
+
+    struct rx_queue *rxq = ((struct rx_queue *)(ix_dev->rx_queues)) + queue_id;
+    uint16_t rx_index = rxq->rx_index;
+    uint16_t prev_rx_index = rxq->rx_index;
+    uint32_t i;
+    for(i=0;i<num_buf;i++){
+            volatile union ixgbe_adv_rx_desc *rxd = rxq->descriptors + rx_index;
+            if(rxd->wb.upper.status_error & IXGBE_RXDADV_STAT_DD){
+                    if(!(rxd->wb.upper.status_error & IXGBE_RXDADV_STAT_EOP)){
+                            printf("multi_segment packt not supported!");
+                    }
+                union ixgbe_adv_rx_desc desc = *rxd;
+                struct pkt_buf *buf = (struct pkt_buf *)rxq->virtual_address[rx_index];
+                buf->size = desc.wb.upper.length;
+
+                //そのポインタをread.pkt_addrに登録
+                struct pkt_buf *p_buf = alloc_pkt_buf(rxq->mempool);
+                if(!p_buf){
+                    perror("failed to allocate pkt_buf");
+                    return -1;
+                }
+            
+                rxd->read.pkt_addr = p_buf->buf_addr_phy + offsetof(struct pkt_buf,data);
+                rxd->read.hdr_addr = 0;
+                rxq->virtual_address[rx_index] = p_buf;
+                bufs[i]=buf;
+                prev_rx_index = rx_index;
+                rx_index = wrap_ring(rx_index,rxq->num_entries);
+            }
+            else{break;}
+    }
+    if(rx_index != prev_rx_index){
+            set_reg32(ix_dev->addr,IXGBE_RDT(queue_id),prev_rx_index);
+            rxq->rx_index = rx_index;
+    }
+    return i;
+}
+
+
+uint32_t tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *bufs[],uint32_t num_bufs)
+{
+    struct tx_queue *txq = ((struct tx_queue*)(ix_dev->tx_queues)) + queue_id;
+    uint16_t tx_index = txq->tx_index;
+    uint16_t clean_index = txq->clean_index;
+
+    while(true){
+            int32_t cleanable = tx_index - clean_index;
+            if(cleanable < 0){
+                    cleanable = txq->num_entries + cleanable;
+            }
+            if(cleanable < TX_CLEAN_BATCH){
+                    break;
+            }
+            int cleanup_to = clean_index + TX_CLEAN_BATCH - 1;
+            if(cleanup_to >= txq->num_entries){
+                    cleanup_to -= txq->num_entries;
+            }
+            volatile union ixgbe_adv_tx_desc *txd = txq->descriptors + cleanup_to;
+            uint32_t status = txd->wb.status;
+            if(status & IXGBE_ADVTXD_STAT_DD){
+                    int32_t i = clean_index;
+                    while(true){
+                            struct pkt_buf *buf = txq->virtual_address[i];
+                            pkt_buf_free(buf);
+                            if(i==cleanup_to){
+                                    break;
+                            }
+                            i = wrap_ring(i,txq->num_entries);
+                    }
+                    clean_index = wrap_ring(cleanup_to,txq->num_entries);
+            }
+            else{break;}
+    }
+    txq->clean_index = clean_index;
+    uint32_t sent;
+    for(sent=0;sent<num_bufs;sent++){
+            uint32_t next_index = wrap_ring(tx_index,txq->num_entries);
+            if(clean_index == next_index){
+                    break;
+            }
+            struct pkt_buf *buf = bufs[sent];
+            txq->virtual_address[tx_index] = (void *)buf;
+            volatile union ixgbe_adv_tx_desc *txd = txq->descriptors + tx_index;
+            txq->tx_index = next_index;
+            txd->read.buffer_addr = buf->buf_addr_phy + offsetof(struct pkt_buf,data);
+            txd->read.cmd_type_len = IXGBE_ADVTXD_DCMD_EOP | IXGBE_ADVTXD_DCMD_RS | IXGBE_ADVTXD_DCMD_IFCS | IXGBE_ADVTXD_DCMD_DEXT | IXGBE_ADVTXD_DTYP_DATA | buf->size;
+            txd->read.olinfo_status = buf->size >> IXGBE_ADVTXD_PAYLEN_SHIFT;
+    }
+    set_reg32(ix_dev->addr,IXGBE_TDT(queue_id),tx_index);
+    return sent;
+}
+
+uint32_t ixgbe_get_link_speed(struct ixgbe_device *ix_dev)
 {
         printf("start: ixgbe_get_link_speed");
         uint32_t link_speed = get_reg32(ix_dev->addr,IXGBE_LINKS);
@@ -290,7 +408,7 @@ void wait_for_link(struct ixgbe_device *ix_dev)
         uint32_t poll_int = 100000;
         uint32_t speed;
         
-        while(!(speed = ixgbe_get_link_speed(&ix_dev)) && max_wait > 0){
+        while(!(speed = ixgbe_get_link_speed(ix_dev)) && max_wait > 0){
                 usleep(poll_int);
                 max_wait -= poll_int;
         }
@@ -304,7 +422,7 @@ void do_init_seq(struct ixgbe_device *ix_dev)
     printf("start: do_init_seq");
 
     //EIMC registerに書き込めば、割り込み禁止
-    set_reg32(ix_dev->addr,IXGBE_EIMC,0x7FFFFFFFF);
+    set_reg32(ix_dev->addr,IXGBE_EIMC,0x7FFFFFFF);
 
     //デバイスの初期化,初期化の後は10msec以上待つ必要があるぽい
     set_reg32(ix_dev->addr,IXGBE_CTRL,IXGBE_CTRL_RST_MASK);
@@ -312,14 +430,14 @@ void do_init_seq(struct ixgbe_device *ix_dev)
     //usleep(10000);
 
     //もう一回割り込み禁止しないとダメっぽい
-    set_reg32(ix_dev->addr,IXGBE_EIMC,0x7FFFFFFFF);
+    set_reg32(ix_dev->addr,IXGBE_EIMC,0x7FFFFFFF);
 
     //Genaral Configurationレジスタの設定
     //EEPROMがauto completionされるのを待つっぽい(EEPROM->store product configuration information)
     wait_set_reg32(ix_dev->addr,IXGBE_EEC,IXGBE_EEC_ARD);
 
     //DMAの初期化ができるのを待つ
-    wait_set_reg32(ix_dev->addr,IXGBE_RDRXCTL,IXGBE_RDRXCTL,IXGBE_RDRXCTL_DMAIDONE);
+    wait_set_reg32(ix_dev->addr,IXGBE_RDRXCTL,IXGBE_RDRXCTL_DMAIDONE);
     
     //PHYとLINKの10G用の設定
     init_link(ix_dev);
@@ -344,7 +462,7 @@ void do_init_seq(struct ixgbe_device *ix_dev)
     }
 
     //割り込みの許可
-    set_flags(ix_dev->addr,IXGBE_FCTRL,IXGBE_FCTRL_MPE | IXGBE_FCTRL_UPE);  
+    set_flag32(ix_dev->addr,IXGBE_FCTRL,IXGBE_FCTRL_MPE | IXGBE_FCTRL_UPE);  
 
     //リンク待ち
     wait_for_link(ix_dev);
@@ -352,49 +470,47 @@ void do_init_seq(struct ixgbe_device *ix_dev)
     printf("end: do_init_sequence");
 }
 
-struct ixgbe_device start_ixgbe(const char *pci_addr,uint16_t rx_queues,uint16_t tx_queues)
+struct ixgbe_device *start_ixgbe(char *pci_addr,uint16_t rx_queues,uint16_t tx_queues)
 {
    if(getuid()){
-       warn("Not running as root,this will probably fail");
+       printf("Not running as root,this will probably fail");
    }
    if(rx_queues > MAX_QUEUES){
-       error("Rx queues %d exceed MAX_QUEUES",rx_queues);
+       printf("Rx queues %d exceed MAX_QUEUES",rx_queues);
    }
    if(tx_queues > MAX_QUEUES){
-      error("Tx queues %d exceed MAX_QUEUES",tx_queues);
+      printf("Tx queues %d exceed MAX_QUEUES",tx_queues);
    }
 
    struct ixgbe_device ix_dev;
-   memset(ix_dev,0,sizeof(struct ixgbe_device));
 
    //strdup()->文字列をコピーして返す
    ix_dev.pci_addr = strdup(pci_addr);
 
    char path[PATH_MAX];
-   sprintf(path,PATH_MAX,"/sys/bus/pci/devices/%s/iommu_group",pci_addr);
+   snprintf(path,PATH_MAX,"/sys/bus/pci/devices/%s/iommu_group",pci_addr);
    struct stat buf;
    ix_dev.vfio = stat(path,&buf) == 0;
    if(ix_dev.vfio){
            ix_dev.vfio_fd = init_vfio(pci_addr);
            if(ix_dev.vfio_fd < 0){
-                   error("faled to get vfio_fd");
+                   printf("faled to get vfio_fd");
            }
    }
    ix_dev.driver_name = driver_name;
    ix_dev.num_rx_queues = rx_queues;
    ix_dev.num_tx_queues = tx_queues;
-   ix_dev.rx_batch = ixgbe_rx_batch;
-   ix_dev.tx_batch = ixgbe_tx_batch;
-   ix_dev.read_stats = ixgbe_read_stats;
-   ix_dev.set_promisc = ixgbe_set_promisc;
-   ix_dev.get_link_speed = ixgbe_get_link_speed;
+   ix_dev.rx_batch = rx_batch;
+   ix_dev.tx_batch = tx_batch;
+   //ix_dev.read_stats = ixgbe_read_stats;
+   //ix_dev.set_promisc = ixgbe_set_promisc;
+   //ix_dev.get_link_speed = ixgbe_get_link_speed;
 
    if(ix_dev.vfio){
            ix_dev.addr = vfio_map_region(ix_dev.vfio_fd,VFIO_PCI_BAR0_REGION_INDEX);
    }
    else{
            printf("can't use vfio");
-           return -1;
    }
     
     ix_dev.rx_queues = calloc(rx_queues,sizeof(struct rx_queue) + sizeof(void *) * MAX_RX_QUEUE_ENTRIES);
@@ -402,29 +518,31 @@ struct ixgbe_device start_ixgbe(const char *pci_addr,uint16_t rx_queues,uint16_t
 
     do_init_seq(&ix_dev);
 
-    return ix_dev;
+    return &ix_dev;
 }
 
 int pci_open_resource(const char *pci_addr,const char *resource,int flags)
 {
     char path[PATH_MAX];
     snprintf(path,PATH_MAX,"/sys/bus/pci/devices/%s%s",pci_addr,resource);
-    if((int fd = open(path,flags)) < 0){
-            perror("failed to open file descriptor");
+    int fd = open(path,flags);
+    if(fd < 0){
+            printf("failed to open file descriptor");
             return -1;
     }
     return fd;
 }
-struct ixgbe_device *do_ixgbe(const char *pci_addr,uint16_t rx_queue,uint16_t tx_queue)
+struct ixgbe_device do_ixgbe(char *pci_addr,uint16_t rx_queue,uint16_t tx_queue)
 {
+    struct ixgbe_device ixgbe;
     int config = pci_open_resource(pci_addr,"config",O_RDONLY);
     uint16_t vendor_id = read_io16(config,0);
     uint16_t device_id = read_io16(config,2);
     uint32_t class_id  = read_io32(config,8) >> 24;
     close(config);
     if(class_id != 2){
-            perror("This device is not a NIC.");
+            printf("This device is not a NIC.");
     }
-
-    return start_ixgbe(pci_addr,rx_queues,tx_queues);
+    return start_ixgbe(pci_addr,rx_queue,tx_queue);
 }
+

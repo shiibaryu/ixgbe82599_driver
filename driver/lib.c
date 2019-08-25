@@ -1,16 +1,25 @@
-#include <linux/limit.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <unistd.h>
-#include <linux/mman.h>
-#include <sys/ioctl.h>
-#include <fcntl.h>
-#include <stddef.h>>
+#include <stdbool.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <sys/file.h>
+#include <linux/limits.h>
+#include <linux/vfio.h>
+#include <sys/mman.h>
 
+const int TX_CLEAN_BATCH = 32;
 uint32_t path_id = 1;
 uintptr_t vtop(uintptr_t vaddr)
 {
     FILE *pagemap;
     uintptr_t paddr = 0;
-    int offset = (*vaddr / sysconf(_SC_PAGESIZE)) * sizeof(uint64_t);
+    int offset = (vaddr / sysconf(_SC_PAGESIZE)) * sizeof(uint64_t);
     uint64_t e;
     
     if ((pagemap = fopen("/proc/self/pagemap", "r"))) {
@@ -37,22 +46,22 @@ struct dma_address allocate_dma_address(uint32_t ring_size)
    //ringサイズ分のページをmap
    //まずはメモリ確保のためのファイルへのアクセスを得るため、ファイルディスクリプターをもらう
     this_id = __sync_fetch_and_add(&path_id,1);
-    snprintf(path,PATH_MAX,"/mnt/huge/ixgbe-%d-%d",this_id,get_pid());
-    int fd = open(path,O_CREATE|O_RDWR,S_IRWXU);
+    snprintf(path,PATH_MAX,"/mnt/huge/ixgbe-%d-%d",this_id,getpid());
+    int fd = open(path,O_CREAT|O_RDWR,S_IRWXU);
     //ring_size以上は切り捨てる
-    check_err(ftruncate(fd,(off_t)ring_size),"failed to ftruncate");
+    ftruncate(fd,(off_t)ring_size);
    //仮想アドレスが帰ってくるのでそれを物理にして、dma_address
    //に格納してreturn
    //ここで仮想アドレスget
-   uintptr_t virt_addr = (uintptr_t)mmap(NULL,size,PROT_READ|PROT_WRITE,MAP_SHAERED | MAP_HUGETLB,fd,0);
+   uintptr_t virt_addr = (uintptr_t)mmap(NULL,ring_size,PROT_READ|PROT_WRITE,MAP_SHARED | MAP_HUGETLB,fd,0);
 
    close(fd);
    unlink(path);
 
    return(struct dma_address){
-           .virt_addr = virt_addr;
-           .phy_addr =  vtop(virt_addr);
-   }
+           .virt_addr = (void *)virt_addr,
+           .phy_addr =  vtop(virt_addr)
+   };
 }
 
 /*ディスクリプターにパケットが届いた時にそれを格納するためのメモリープール*/
@@ -65,7 +74,7 @@ struct mempool *allocate_mempool_mem(uint32_t num_entries,uint32_t entry_size)
     
     dma_addr = allocate_dma_address(num_entries*entry_size);
     mempool->num_entries = num_entries;
-    mempool->buf_entries = entry_size;
+    mempool->num_entries = entry_size;
     mempool->base_addr   = dma_addr.virt_addr;
     mempool->free_stack_top = num_entries;
 
@@ -74,35 +83,43 @@ struct mempool *allocate_mempool_mem(uint32_t num_entries,uint32_t entry_size)
         struct pkt_buf *buf = (struct pkt_buf *)(((uint8_t *)mempool->base_addr) + i * entry_size);
         buf->buf_addr_phy = vtop((uintptr_t)buf);
         buf->mempool_idx = i;
-        buf->mempool = mempool
+        buf->mempool = mempool;
         buf->size = 0;
     }
     
     return mempool;
 }
 
-struct pkt_buf *alloc_pkt_buf(struct mempool *mempool,struct pkt_buf *buf[],uint32_t num_bufs)
+uint32_t alloc_pkt_buf_batch(struct mempool *mempool,struct pkt_buf *buf[],uint32_t num_bufs)
 {
    if(mempool->free_stack_top < num_bufs){
-           warn("memory pool %p only has %d free bufs, requested %d",mempool,mempool->buf_size);
+           printf("memory pool %p only has %d free bufs, requested %d",mempool,mempool->buf_size,num_bufs);
            num_bufs = mempool->free_stack_top;
    }
     for(uint32_t i=0;i<num_bufs;i++){
             uint32_t entry_id = mempool->free_stack[--mempool->free_stack_top];
             buf[i] = (struct pkt_buf*)(((uint8_t*)mempool->base_addr) + entry_id * mempool->buf_size);
     }
-    return buf;
+    return num_bufs;
 }
+
+struct pkt_buf *alloc_pkt_buf(struct mempool *mempool)
+{
+    struct pkt_buf *pb = NULL;
+    alloc_pkt_buf_batch(mempool,&pb,1);
+    return pb;
+}
+
+
 void pkt_buf_free(struct pkt_buf *buf)
 {
     struct mempool *mempool = buf->mempool;
     mempool->free_stack[mempool->free_stack_top++] = buf->mempool_idx;
 }
 
-
 #define wrap_ring(index,ring_size) (uint16_t)((index+1)&(ring_size-1))
 
-uint32_t rx_batch(struct ixgbe_dev *ix_dev,uint16_t queue_id,struct pkt_buff *bufs[],uint32_t num_buf)
+uint32_t rx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *bufs[],uint32_t num_buf)
 {
     //datasheet 7.1
     //パケットの確認
@@ -115,22 +132,21 @@ uint32_t rx_batch(struct ixgbe_dev *ix_dev,uint16_t queue_id,struct pkt_buff *bu
     struct rx_queue *rxq = ((struct rx_queue *)(ix_dev->rx_queues)) + queue_id;
     uint16_t rx_index = rxq->rx_index;
     uint16_t prev_rx_index = rxq->rx_index;
-
-    for(uint32_t i=0;i<num_buf;i++){
+    uint32_t i;
+    for(i=0;i<num_buf;i++){
             volatile union ixgbe_adv_rx_desc *rxd = rxq->descriptors + rx_index;
             if(rxd->wb.upper.status_error & IXGBE_RXDADV_STAT_DD){
                     if(!(rxd->wb.upper.status_error & IXGBE_RXDADV_STAT_EOP)){
-                            error("multi_segment packt not supported!");
+                            printf("multi_segment packt not supported!");
                     }
                 union ixgbe_adv_rx_desc desc = *rxd;
-                struct pkt_buf *buf = (struct pkt_buf *)queue->virtual_address[rx_index];
+                struct pkt_buf *buf = (struct pkt_buf *)rxq->virtual_address[rx_index];
                 buf->size = desc.wb.upper.length;
 
                 //そのポインタをread.pkt_addrに登録
-                struct pkt_buf *buf = NULL;
-                struct pkt_buf *p_buf = alloc_pkt_buf(rxq->mempool,&buf,1);
+                struct pkt_buf *p_buf = alloc_pkt_buf(rxq->mempool);
                 if(!p_buf){
-                    perror("failed to allocate pkt_buf");
+                    printf("failed to allocate pkt_buf");
                     return -1;
                 }
             
@@ -144,7 +160,7 @@ uint32_t rx_batch(struct ixgbe_dev *ix_dev,uint16_t queue_id,struct pkt_buff *bu
             else{break;}
     }
     if(rx_index != prev_rx_index){
-            set_reg32(ix_dev->addr,IXGBE_RDT(queue_id),last_rx_index);
+            set_reg32(ix_dev->addr,IXGBE_RDT(queue_id),prev_rx_index);
             rxq->rx_index = rx_index;
     }
     return i;
@@ -159,7 +175,7 @@ uint32_t tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
     while(true){
             int32_t cleanable = tx_index - clean_index;
             if(cleanable < 0){
-                    cleanable = txq->num_entries + cleanble;
+                    cleanable = txq->num_entries + cleanable;
             }
             if(cleanable < TX_CLEAN_BATCH){
                     break;
@@ -194,9 +210,9 @@ uint32_t tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
             struct pkt_buf *buf = bufs[sent];
             txq->virtual_address[tx_index] = (void *)buf;
             volatile union ixgbe_adv_tx_desc *txd = txq->descriptors + tx_index;
-            txq->index = next_index;
+            txq->tx_index = next_index;
             txd->read.buffer_addr = buf->buf_addr_phy + offsetof(struct pkt_buf,data);
-            txd->read.cmd_type_len = IXGBE_ADVTXD_DCMD_EOP | IXGBE_ADVTXD_DCMD_RS | IXGBE_ADVTXD_DCMD_IFCS | IXGBE_ADVTXD_DCMD_DEXT | IXGBE_ADVTXD_DTYPE_DATA | buf->size;
+            txd->read.cmd_type_len = IXGBE_ADVTXD_DCMD_EOP | IXGBE_ADVTXD_DCMD_RS | IXGBE_ADVTXD_DCMD_IFCS | IXGBE_ADVTXD_DCMD_DEXT | IXGBE_ADVTXD_DTYP_DATA | buf->size;
             txd->read.olinfo_status = buf->size >> IXGBE_ADVTXD_PAYLEN_SHIFT;
     }
 
