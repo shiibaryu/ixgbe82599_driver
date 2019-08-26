@@ -16,7 +16,6 @@ start_ixgbe()
 #include <stdlib.h>
 #include <sys/file.h>
 #include <linux/limits.h>
-#include <linux/vfio.h>
 
 #include "ixgbe.h"
 #include "lib.h"
@@ -42,7 +41,7 @@ int main(int argc,char *argv[])
     struct ixgbe_stats ix_stat;
     //struct ixgbe_stats ix_stat2;
 
-    init_stats(&ix_stat);
+    clear_stats(&ix_stat);
     print_stats(&ix_stat);
 
     //init_stats(&ix_stat2);
@@ -62,6 +61,7 @@ int main(int argc,char *argv[])
             if(now_time-prev_time > 1000000000){
                 read_stats(ix_rx,&ix_stat);
                 print_stats(&ix_stat);
+                prev_time = now_time;
             }
             i++;
             if(i>100){

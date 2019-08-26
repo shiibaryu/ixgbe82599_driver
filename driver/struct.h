@@ -1,3 +1,5 @@
+#define SIZE_PKT_BUF_HEADROOM 40
+
 struct pkt_buf{
    struct mempool *mempool;
    uintptr_t buf_addr_phy;
@@ -16,8 +18,6 @@ struct ixgbe_device{
     int device_id;
     uint16_t num_rx_queues;
     uint16_t num_tx_queues;
-    uint32_t (*rx_batch)(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *bufs[],uint32_t num_bufs);
-    uint32_t (*tx_batch)(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *bufs[],uint32_t num_bufs);
     bool vfio;
     int vfio_fd;
 };

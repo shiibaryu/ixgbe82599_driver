@@ -39,23 +39,6 @@ const int MIN_MEMPOOL_ENTRIES = 4096;
 
 const int TX_CLEAN_BATCH = 32;
 
-/*struct tx_queue{
-    volatile union ixgbe_adv_tx_desc *descriptors;
-    struct mempool *mempool;
-    uint16_t num_entries;
-    uint16_t clean_index;
-    uint16_t tx_index;
-    void *virtual_address[];
-};
-
-struct rx_queue{
-    volatile union ixgbe_adv_rx_desc *descriptors;
-    struct mempool *mempool;
-    uint16_t num_entries;
-    uint16_t rx_index;
-    void *virtual_address[];
-};*/
-
 //PHYとLINKの設定
 void init_link(struct ixgbe_device *ix_dev)
 {
@@ -482,43 +465,42 @@ struct ixgbe_device *start_ixgbe(char *pci_addr,uint16_t rx_queues,uint16_t tx_q
       printf("Tx queues %d exceed MAX_QUEUES",tx_queues);
    }
 
-   struct ixgbe_device ix_dev;
-
+   struct ixgbe_device *ix_dev = (struct ixgbe_device*)malloc(sizeof(struct ixgbe_device));
    //strdup()->文字列をコピーして返す
-   ix_dev.pci_addr = strdup(pci_addr);
+   ix_dev->pci_addr = strdup(pci_addr);
 
    char path[PATH_MAX];
    snprintf(path,PATH_MAX,"/sys/bus/pci/devices/%s/iommu_group",pci_addr);
    struct stat buf;
-   ix_dev.vfio = stat(path,&buf) == 0;
-   if(ix_dev.vfio){
-           ix_dev.vfio_fd = init_vfio(pci_addr);
-           if(ix_dev.vfio_fd < 0){
+   ix_dev->vfio = stat(path,&buf) == 0;
+   if(ix_dev->vfio){
+           ix_dev->vfio_fd = init_vfio(pci_addr);
+           if(ix_dev->vfio_fd < 0){
                    printf("faled to get vfio_fd");
            }
    }
-   ix_dev.driver_name = driver_name;
-   ix_dev.num_rx_queues = rx_queues;
-   ix_dev.num_tx_queues = tx_queues;
-   ix_dev.rx_batch = rx_batch;
-   ix_dev.tx_batch = tx_batch;
+   ix_dev->driver_name = driver_name;
+   ix_dev->num_rx_queues = rx_queues;
+   ix_dev->num_tx_queues = tx_queues;
+   //ix_dev->rx_batch = rx_batch;
+   //ix_dev->tx_batch = tx_batch;
    //ix_dev.read_stats = ixgbe_read_stats;
    //ix_dev.set_promisc = ixgbe_set_promisc;
    //ix_dev.get_link_speed = ixgbe_get_link_speed;
 
-   if(ix_dev.vfio){
-           ix_dev.addr = vfio_map_region(ix_dev.vfio_fd,VFIO_PCI_BAR0_REGION_INDEX);
+   if(ix_dev->vfio){
+           ix_dev->addr = vfio_map_region(ix_dev->vfio_fd,VFIO_PCI_BAR0_REGION_INDEX);
    }
    else{
            printf("can't use vfio");
    }
     
-    ix_dev.rx_queues = calloc(rx_queues,sizeof(struct rx_queue) + sizeof(void *) * MAX_RX_QUEUE_ENTRIES);
-    ix_dev.tx_queues = calloc(tx_queues,sizeof(struct tx_queue) + sizeof(void *) * MAX_TX_QUEUE_ENTRIES);
+    ix_dev->rx_queues = calloc(rx_queues,sizeof(struct rx_queue) + sizeof(void *) * MAX_RX_QUEUE_ENTRIES);
+    ix_dev->tx_queues = calloc(tx_queues,sizeof(struct tx_queue) + sizeof(void *) * MAX_TX_QUEUE_ENTRIES);
 
-    do_init_seq(&ix_dev);
+    do_init_seq(ix_dev);
 
-    return &ix_dev;
+    return ix_dev;
 }
 
 int pci_open_resource(const char *pci_addr,const char *resource,int flags)
@@ -532,9 +514,8 @@ int pci_open_resource(const char *pci_addr,const char *resource,int flags)
     }
     return fd;
 }
-struct ixgbe_device do_ixgbe(char *pci_addr,uint16_t rx_queue,uint16_t tx_queue)
+struct ixgbe_device *do_ixgbe(char *pci_addr,uint16_t rx_queue,uint16_t tx_queue)
 {
-    struct ixgbe_device ixgbe;
     int config = pci_open_resource(pci_addr,"config",O_RDONLY);
     uint16_t vendor_id = read_io16(config,0);
     uint16_t device_id = read_io16(config,2);

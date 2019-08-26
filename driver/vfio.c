@@ -14,6 +14,17 @@
 
 int group_id=0;
 ssize_t MIN_DMA_MEMORY = 4096;
+volatile int VFIO_CONTAINER_FILE_DESCRIPTOR = -1;
+
+int get_vfio_container()
+{
+   return VFIO_CONTAINER_FILE_DESCRIPTOR;
+}
+
+void set_vfio_container(int fd)
+{
+    VFIO_CONTAINER_FILE_DESCRIPTOR = fd;
+}
 
 void vfio_enable_dma(int vfio_fd)
 {
@@ -126,3 +137,4 @@ uint64_t vfio_unmap_dma(int vfio_fd,uint64_t iova,uint32_t size)
 
    return ret;
 }
+

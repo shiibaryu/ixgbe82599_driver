@@ -13,7 +13,11 @@
 #include <linux/vfio.h>
 #include <sys/mman.h>
 
-const int TX_CLEAN_BATCH = 32;
+#include "lib.h"
+#include "ixgbe.h"
+#include "struct.h"
+
+//const int TX_CLEAN_BATCH = 32;
 uint32_t path_id = 1;
 uintptr_t vtop(uintptr_t vaddr)
 {
@@ -117,7 +121,7 @@ void pkt_buf_free(struct pkt_buf *buf)
     mempool->free_stack[mempool->free_stack_top++] = buf->mempool_idx;
 }
 
-#define wrap_ring(index,ring_size) (uint16_t)((index+1)&(ring_size-1))
+/*#define wrap_ring(index,ring_size) (uint16_t)((index+1)&(ring_size-1))
 
 uint32_t rx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *bufs[],uint32_t num_buf)
 {
@@ -219,4 +223,4 @@ uint32_t tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
     set_reg32(ix_dev->addr,IXGBE_TDT(queue_id),tx_index);
 
     return sent;
-}
+}*/

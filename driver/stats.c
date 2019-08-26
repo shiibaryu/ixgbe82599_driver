@@ -2,7 +2,12 @@
 #include <stdint.h>
 #include <time.h>
 
-void init_stats(struct ixgbe_stats *ix_stats)
+#include "ixgbe.h"
+#include "lib.h"
+#include "struct.h"
+#include "stats.h"
+
+void clear_stats(struct ixgbe_stats *ix_stats)
 {
     ix_stats->rx_pkts_num = 0;
     ix_stats->tx_pkts_num = 0;
