@@ -482,11 +482,6 @@ struct ixgbe_device *start_ixgbe(char *pci_addr,uint16_t rx_queues,uint16_t tx_q
    ix_dev->driver_name = driver_name;
    ix_dev->num_rx_queues = rx_queues;
    ix_dev->num_tx_queues = tx_queues;
-   //ix_dev->rx_batch = rx_batch;
-   //ix_dev->tx_batch = tx_batch;
-   //ix_dev.read_stats = ixgbe_read_stats;
-   //ix_dev.set_promisc = ixgbe_set_promisc;
-   //ix_dev.get_link_speed = ixgbe_get_link_speed;
 
    if(ix_dev->vfio){
            ix_dev->addr = vfio_map_region(ix_dev->vfio_fd,VFIO_PCI_BAR0_REGION_INDEX);
