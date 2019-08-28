@@ -501,7 +501,7 @@ struct ixgbe_device *start_ixgbe(char *pci_addr,uint16_t rx_queues,uint16_t tx_q
 int pci_open_resource(const char *pci_addr,const char *resource,int flags)
 {
     char path[PATH_MAX];
-    snprintf(path,PATH_MAX,"/sys/bus/pci/devices/%s%s",pci_addr,resource);
+    snprintf(path,PATH_MAX,"/sys/bus/pci/devices/%s/%s",pci_addr,resource);
     int fd = open(path,flags);
     if(fd < 0){
             printf("failed to open file descriptor");
@@ -511,6 +511,7 @@ int pci_open_resource(const char *pci_addr,const char *resource,int flags)
 }
 struct ixgbe_device *do_ixgbe(char *pci_addr,uint16_t rx_queue,uint16_t tx_queue)
 {
+    printf("start ixgbe\n");
     int config = pci_open_resource(pci_addr,"config",O_RDONLY);
     uint16_t vendor_id = read_io16(config,0);
     uint16_t device_id = read_io16(config,2);
@@ -519,6 +520,7 @@ struct ixgbe_device *do_ixgbe(char *pci_addr,uint16_t rx_queue,uint16_t tx_queue
     if(class_id != 2){
             printf("This device is not a NIC.");
     }
+    printf("end ixgbe\n");
     return start_ixgbe(pci_addr,rx_queue,tx_queue);
 }
 

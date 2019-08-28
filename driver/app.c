@@ -29,7 +29,7 @@ const int BATCH_SIZE = 32;
 int main(int argc,char *argv[])
 {
     if(argc != 3){
-            printf("Usage: %s <pci bus id2> <pci bus id1>\n",argv[0]);
+            printf("Usage: %s <pci bus id 1> <pci bus id 2>\n",argv[0]);
             return -1;
     }
     uint64_t prev_time = monotonic_time();
