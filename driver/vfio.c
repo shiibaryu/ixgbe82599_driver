@@ -12,7 +12,8 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 
-int group_id=0;
+#include "lib.h"
+
 ssize_t MIN_DMA_MEMORY = 4096;
 volatile int VFIO_CONTAINER_FILE_DESCRIPTOR = -1;
 
@@ -51,8 +52,14 @@ int init_vfio(char *pci_addr)
     if(ret<0){perror("failed to get correct path"); return -1;}
     strncat(path,"iommu_group",sizeof(path)-strlen(path) - 1);
 
+    info("readlink iommu group path");
     if((ret = readlink(path,iommu_group_path,sizeof(iommu_group_path))) == -1){perror("readlink");return -1;}
     iommu_group_path[ret] = '\0';
+
+    int group_id;
+    char *group_name = basename(iommu_group_path);
+    sscanf(group_name,"%d",&group_id);
+    info("get iommu group id");
 
     unsigned short flag = 0;
     int container = get_vfio_container();
@@ -70,10 +77,10 @@ int init_vfio(char *pci_addr)
         }
     }
     
-    group_id +=1;
     /*create vfio group*/
     snprintf(path,sizeof(path),"/dev/vfio/%d",group_id);
     int vfio_gfd = open(path,O_RDWR);
+    info("get vfio group fd %d",vfio_gfd);
 
     struct vfio_group_status group_status = {.argsz = sizeof(group_status)};
     ioctl(vfio_gfd,VFIO_GROUP_GET_STATUS,&group_status);
@@ -89,6 +96,9 @@ int init_vfio(char *pci_addr)
     }
 
     int vfio_fd = ioctl(vfio_gfd,VFIO_GROUP_GET_DEVICE_FD,pci_addr);
+    info("get vfio_fd %d",vfio_fd);
+    
+    info("enable enable dma for vfio");
     vfio_enable_dma(vfio_fd);
 
     return vfio_fd;

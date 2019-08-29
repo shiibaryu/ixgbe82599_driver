@@ -1,11 +1,8 @@
-#define SIZE_PKT_BUF_HEADROOM 40
-
 struct pkt_buf{
    struct mempool *mempool;
    uintptr_t buf_addr_phy;
    uint32_t  mempool_idx;
    uint32_t  size;
-   uint8_t   head_room[SIZE_PKT_BUF_HEADROOM];
    uint8_t   data[] __attribute__((aligned(64)));
 };
 
@@ -14,7 +11,6 @@ struct ixgbe_device{
     void *tx_queues;
     void *rx_queues;
     char *pci_addr;
-    char *driver_name;
     int device_id;
     uint16_t num_rx_queues;
     uint16_t num_tx_queues;

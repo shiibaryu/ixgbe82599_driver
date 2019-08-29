@@ -89,6 +89,22 @@ static inline uint32_t read_io8(int fd,size_t offset){
         }
         return temp;
 }
+
+#ifndef NDEBUG
+#define debug(fmt, ...) do {\
+	fprintf(stderr, "[DEBUG] %s:%d %s(): " fmt "\n", __FILE__, __LINE__, __func__, ##__VA_ARGS__);\
+} while(0)
+#else
+#define debug(fmt, ...) do {} while(0)
+#undef assert
+#define assert(expr) (void) (expr)
+#endif
+
+#define info(fmt, ...) do {\
+	fprintf(stdout, "[INFO ] %s:%d %s(): " fmt "\n", __FILE__, __LINE__, __func__, ##__VA_ARGS__);\
+} while(0)
+
+
 uintptr_t vtop(uintptr_t vaddr);
 struct dma_address allocate_dma_address(uint32_t ring_size);
 struct mempool *allocate_mempool_mem(uint32_t num_entries,uint32_t entry_size);
