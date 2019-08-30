@@ -72,7 +72,7 @@ static inline uint32_t read_io32(int fd,size_t offset){
         return temp;
 }
 
-static inline uint32_t read_io16(int fd,size_t offset){
+static inline uint16_t read_io16(int fd,size_t offset){
         __asm__ volatile("" : : : "memory");
         uint16_t temp;
         if(pread(fd,&temp,sizeof(temp),offset) != sizeof(temp)){
@@ -81,7 +81,7 @@ static inline uint32_t read_io16(int fd,size_t offset){
         return temp;
  }
  
-static inline uint32_t read_io8(int fd,size_t offset){
+static inline uint8_t read_io8(int fd,size_t offset){
         __asm__ volatile("" : : : "memory");
         uint8_t temp;
         if(pread(fd,&temp,sizeof(temp),offset) != sizeof(temp)){
@@ -110,7 +110,5 @@ struct dma_address allocate_dma_address(uint32_t ring_size);
 struct mempool *allocate_mempool_mem(uint32_t num_entries,uint32_t entry_size);
 struct pkt_buf *alloc_pkt_buf(struct mempool *mempool);
 void pkt_buf_free(struct pkt_buf *buf);
-//uint32_t rx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *bufs[],uint32_t num_buf);
-//uint32_t tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *bufs[],uint32_t num_buf);
 
 

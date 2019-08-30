@@ -476,14 +476,14 @@ struct ixgbe_device *start_ixgbe(char *pci_addr,uint16_t rx_queues,uint16_t tx_q
    snprintf(path,PATH_MAX,"/sys/bus/pci/devices/%s/iommu_group",pci_addr);
 
    struct stat buf;
-   ix_dev->vfio = stat(path,&buf) == 0;
-   if(ix_dev->vfio){
+   //ix_dev->vfio = stat(path,&buf) == 0;
+   //if(ix_dev->vfio){
            info("initialize vfio");
            ix_dev->vfio_fd = init_vfio(pci_addr);
            info("get vfio_fd %d",ix_dev->vfio_fd);
            if(ix_dev->vfio_fd < 0){
                    debug("faled to get vfio_fd");
-           }
+           //}
    }
 
    if(ix_dev->vfio){
@@ -504,29 +504,24 @@ struct ixgbe_device *start_ixgbe(char *pci_addr,uint16_t rx_queues,uint16_t tx_q
     return ix_dev;
 }
 
-int pci_open_resource(const char *pci_addr,const char *resource,int flags)
-{
-    char path[PATH_MAX];
-    snprintf(path,PATH_MAX,"/sys/bus/pci/devices/%s/%s",pci_addr,resource);
-    int fd = open(path,flags);
-    if(fd < 0){
-            debug("failed to open file descriptor");
-            return -1;
-    }
-    return fd;
-}
 struct ixgbe_device *do_ixgbe(char *pci_addr,uint16_t rx_queue,uint16_t tx_queue)
 {
     info("start do_ixgbe()");
-    int config = pci_open_resource(pci_addr,"config",O_RDONLY);
-    uint16_t vendor_id = read_io16(config,0);
-    uint16_t device_id = read_io16(config,2);
-    uint32_t class_id  = read_io32(config,8) >> 24;
-    close(config);
-    if(class_id != 2){
-            debug("This device is not a NIC.");
+    char path[PATH_MAX];
+    snprintf(path,PATH_MAX,"/sys/bus/pci/devices/%s/config",pci_addr);
+    int config_fd = open(path,O_RDONLY);
+    if(config_fd < 0){
+	debug("failed to open config_fd");
     }
+    uint16_t vendor_id;
+    pread(config_fd,&vendor_id,2,0);
+    uint16_t device_id;
+    pread(config_fd,&device_id,2,2);
+
+    info("vendor id: %d  device_id: %d",vendor_id,device_id);
+    close(config_fd);
     info("go start_ixgbe()");
+
     return start_ixgbe(pci_addr,rx_queue,tx_queue);
 }
 
