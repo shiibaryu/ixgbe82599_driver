@@ -17,6 +17,7 @@
 #include "lib.h"
 #include "struct.h"
 #include "vfio.h"
+#include "pci.h"
 /*
 NICへの割り込み禁止
 デバイスのリセットとConfigurationレジスタの設定
@@ -237,7 +238,7 @@ void start_rx_queue(struct ixgbe_device *ix_dev,uint16_t i)
     }
     //rx queueをenable
     set_flag32(ix_dev->addr,IXGBE_RXDCTL(i),IXGBE_RXDCTL_ENABLE);
-    wait_enable_reset(ix_dev->addr,IXGBE_RXDCTL(i),IXGBE_RXDCTL_ENABLE);
+    wait_clear_reg32(ix_dev->addr,IXGBE_RXDCTL(i),IXGBE_RXDCTL_ENABLE);
     //もう一回初期化？？
     set_reg32(ix_dev->addr,IXGBE_RDH(i),0);
     set_reg32(ix_dev->addr,IXGBE_RDT(i),rxq->num_entries - 1);
@@ -254,7 +255,7 @@ void start_tx_queue(struct ixgbe_device *ix_dev,int i)
         set_reg32(ix_dev->addr,IXGBE_TDT(i),txq->num_entries - 1);
 
         set_flag32(ix_dev->addr,IXGBE_TXDCTL(i),IXGBE_TXDCTL_ENABLE);
-        wait_enable_reset(ix_dev->addr,IXGBE_TXDCTL(i),IXGBE_TXDCTL_ENABLE);
+        wait_clear_reg32(ix_dev->addr,IXGBE_TXDCTL(i),IXGBE_TXDCTL_ENABLE);
         info("end: start_tx_queue %d",i);
 }
 
@@ -401,61 +402,59 @@ void wait_for_link(struct ixgbe_device *ix_dev)
 /*initialization sequence*/
 void do_init_seq(struct ixgbe_device *ix_dev)
 {
-    info("start nitialize sequence");
+	info("start initialize sequence: address is %s",ix_dev->addr);
+        
+ 	info("disable interruption");
+    	set_reg32(ix_dev->addr,IXGBE_EIMC,0x7FFFFFFF);
 
-    //EIMC registerに書き込めば、割り込み禁止
-    info("disable innteruotation");
-    set_reg32(ix_dev->addr,IXGBE_EIMC,0x7FFFFFFF);
+        info("initialize IXGBE_CTRL");
+	set_reg32(ix_dev->addr, IXGBE_CTRL, IXGBE_CTRL_RST_MASK);
+	wait_clear_reg32(ix_dev->addr, IXGBE_CTRL, IXGBE_CTRL_RST_MASK);
+	usleep(10000);
 
-    //デバイスの初期化,初期化の後は10msec以上待つ必要があるぽい
-    set_reg32(ix_dev->addr,IXGBE_CTRL,IXGBE_CTRL_RST_MASK);
-    wait_enable_reset(ix_dev->addr,IXGBE_CTRL,IXGBE_CTRL_RST_MASK);
-    //usleep(10000);
+    	info("re-disable interruption");
+    	set_reg32(ix_dev->addr,IXGBE_EIMC,0x7FFFFFFF);
 
-    //もう一回割り込み禁止しないとダメっぽい
-    set_reg32(ix_dev->addr,IXGBE_EIMC,0x7FFFFFFF);
+    	info("setting General Configuration register");
+	wait_set_reg32(ix_dev->addr, IXGBE_EEC, IXGBE_EEC_ARD);
 
-    //Genaral Configurationレジスタの設定
-    //EEPROMがauto completionされるのを待つっぽい(EEPROM->store product configuration information)
-    wait_set_reg32(ix_dev->addr,IXGBE_EEC,IXGBE_EEC_ARD);
+    	info("wait dma initilization");
+	wait_set_reg32(ix_dev->addr, IXGBE_RDRXCTL, IXGBE_RDRXCTL_DMAIDONE);
 
-    //DMAの初期化ができるのを待つ
-    wait_set_reg32(ix_dev->addr,IXGBE_RDRXCTL,IXGBE_RDRXCTL_DMAIDONE);
-    
-    //PHYとLINKの10G用の設定
-    info("initialize link");
-    init_link(ix_dev);
+	//linkの初期化
+        info("initialize link");
+	init_link(ix_dev);
 
-    //Statisticsの初期化
-    info("initialize statistics");
-    init_stats(ix_dev);
+    	//Statisticsの初期化
+    	info("initialize statistics");
+    	init_stats(ix_dev);
 
-    //receiveの初期化
-    init_rx(ix_dev);
+    	//receiveの初期化
+   	 init_rx(ix_dev);
 
-    //transmitの初期化
-    init_tx(ix_dev);
+         //transmitの初期化
+    	init_tx(ix_dev);
 
-    uint16_t i;
-    //rx and tx queueの初期化
-    for(i=0;i<ix_dev->num_rx_queues;i++){
-        start_rx_queue(ix_dev,i);
-    }
+    	uint16_t i;
+    	//rx and tx queueの初期化
+    	for(i=0;i<ix_dev->num_rx_queues;i++){
+        	start_rx_queue(ix_dev,i);
+    	}
 
-    for(i=0;i<ix_dev->num_tx_queues;i++){
-        start_tx_queue(ix_dev,i);
-    }
+    	for(i=0;i<ix_dev->num_tx_queues;i++){
+        	start_tx_queue(ix_dev,i);
+    	}
 
-    //割り込みの許可
-    set_flag32(ix_dev->addr,IXGBE_FCTRL,IXGBE_FCTRL_MPE | IXGBE_FCTRL_UPE);  
+    	//割り込みの許可
+    	set_flag32(ix_dev->addr,IXGBE_FCTRL,IXGBE_FCTRL_MPE | IXGBE_FCTRL_UPE);  
 
-    //リンク待ち
-    wait_for_link(ix_dev);
+    	//リンク待ち
+    	wait_for_link(ix_dev);
 
-    info("end: do_init_sequence");
+    	info("end: do_init_sequence");
 }
 
-struct ixgbe_device *start_ixgbe(char *pci_addr,uint16_t rx_queues,uint16_t tx_queues)
+struct ixgbe_device *start_ixgbe(const char *pci_addr,uint16_t rx_queues,uint16_t tx_queues)
 {
    if(getuid()){
        debug("Not running as root,this will probably fail");
@@ -476,14 +475,14 @@ struct ixgbe_device *start_ixgbe(char *pci_addr,uint16_t rx_queues,uint16_t tx_q
    snprintf(path,PATH_MAX,"/sys/bus/pci/devices/%s/iommu_group",pci_addr);
 
    struct stat buf;
-   //ix_dev->vfio = stat(path,&buf) == 0;
-   //if(ix_dev->vfio){
+   ix_dev->vfio = stat(path,&buf) == 0;
+   if(ix_dev->vfio){
            info("initialize vfio");
            ix_dev->vfio_fd = init_vfio(pci_addr);
            info("get vfio_fd %d",ix_dev->vfio_fd);
            if(ix_dev->vfio_fd < 0){
                    debug("faled to get vfio_fd");
-           //}
+           }
    }
 
    if(ix_dev->vfio){
@@ -492,7 +491,8 @@ struct ixgbe_device *start_ixgbe(char *pci_addr,uint16_t rx_queues,uint16_t tx_q
    }
    else{
            debug("can't use vfio");
-           //ix_dev->addr = pci_map_resource(pci_addr);
+	   info("use pci_map_resource");
+	   ix_dev->addr = pci_map_resource(pci_addr);
    }
     
     ix_dev->rx_queues = calloc(rx_queues,sizeof(struct rx_queue) + sizeof(void *) * MAX_RX_QUEUE_ENTRIES);
@@ -504,7 +504,7 @@ struct ixgbe_device *start_ixgbe(char *pci_addr,uint16_t rx_queues,uint16_t tx_q
     return ix_dev;
 }
 
-struct ixgbe_device *do_ixgbe(char *pci_addr,uint16_t rx_queue,uint16_t tx_queue)
+struct ixgbe_device *do_ixgbe(const char *pci_addr,uint16_t rx_queue,uint16_t tx_queue)
 {
     info("start do_ixgbe()");
     char path[PATH_MAX];

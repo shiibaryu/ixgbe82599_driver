@@ -7,6 +7,24 @@
 #define MAX_QUEUES 64
 #define SIZE_PKT_BUF_HEADROOM 40
 
+#ifndef NDEBUG
+#define debug(fmt, ...) do {\
+	fprintf(stderr, "[DEBUG] %s:%d %s(): " fmt "\n", __FILE__, __LINE__, __func__, ##__VA_ARGS__);\
+} while(0)
+#else
+#define debug(fmt, ...) do {} while(0)
+#undef assert
+#define assert(expr) (void) (expr)
+#endif
+
+#define info(fmt, ...) do {\
+	fprintf(stdout, "[INFO ] %s:%d %s(): " fmt "\n", __FILE__, __LINE__, __func__, ##__VA_ARGS__);\
+} while(0)
+
+
+uintptr_t vtop(uintptr_t vaddr);
+struct dma_address allocate_dma_address(uint32_t ring_size);
+struct mempool *allocate_mempool_mem(uint32_t num_entries,uint32_t entry_size);
 static inline void set_reg32(uint8_t *addr,int reg,uint32_t value){
     __asm__ volatile ("" : : : "memory");
     *((volatile uint32_t *)(addr+reg)) = value;
@@ -17,22 +35,25 @@ static inline uint32_t get_reg32(uint8_t *addr,int reg){
     return *((volatile uint32_t *)(addr + reg));
 }
 
-static inline uint32_t wait_enable_reset(uint8_t *addr,int reg,uint32_t mask){
-    __asm__ volatile ("" : : : "memory");
-    uint32_t ret=0;
-    while(ret = *((volatile uint32_t *)(addr+reg)),(ret & mask) != 0){
-            usleep(10000);
-            __asm__ volatile ("" : : : "memory");
-    }
+
+static inline void wait_clear_reg32(const uint8_t* addr, int reg, uint32_t mask) {
+	__asm__ volatile ("" : : : "memory");
+	uint32_t cur = 0;
+	while (cur = *((volatile uint32_t*) (addr + reg)), (cur & mask) != 0) {
+		debug("waiting for flags 0x%08X in register 0x%05X to clear, current value 0x%08X", mask, reg, cur);
+		usleep(10000);
+		__asm__ volatile ("" : : : "memory");
+	}
 }
 
-static inline void wait_set_reg32(uint8_t *addr,int reg,uint32_t value){
-    __asm__ volatile ("" : : : "memory");
-    uint32_t ret=0;
-    while(ret = *((volatile uint32_t *)(addr+reg)),(ret&value) != 0){
-            usleep(10000);
-            __asm__ volatile ("" : : : "memory");
-    }
+static inline void wait_set_reg32(const uint8_t* addr, int reg, uint32_t mask) {
+	__asm__ volatile ("" : : : "memory");
+	uint32_t cur = 0;
+	while (cur = *((volatile uint32_t*) (addr + reg)), (cur & mask) != mask) {
+		debug("waiting for flags 0x%08X in register 0x%05X, current value 0x%08X", mask, reg, cur);
+		usleep(10000);
+		__asm__ volatile ("" : : : "memory");
+	}
 }
 
 static inline void set_flag32(uint8_t *addr,int reg,uint32_t flag){
@@ -89,22 +110,6 @@ static inline uint8_t read_io8(int fd,size_t offset){
         }
         return temp;
 }
-
-#ifndef NDEBUG
-#define debug(fmt, ...) do {\
-	fprintf(stderr, "[DEBUG] %s:%d %s(): " fmt "\n", __FILE__, __LINE__, __func__, ##__VA_ARGS__);\
-} while(0)
-#else
-#define debug(fmt, ...) do {} while(0)
-#undef assert
-#define assert(expr) (void) (expr)
-#endif
-
-#define info(fmt, ...) do {\
-	fprintf(stdout, "[INFO ] %s:%d %s(): " fmt "\n", __FILE__, __LINE__, __func__, ##__VA_ARGS__);\
-} while(0)
-
-
 uintptr_t vtop(uintptr_t vaddr);
 struct dma_address allocate_dma_address(uint32_t ring_size);
 struct mempool *allocate_mempool_mem(uint32_t num_entries,uint32_t entry_size);

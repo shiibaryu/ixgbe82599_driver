@@ -45,7 +45,7 @@ void vfio_enable_dma(int vfio_fd)
 int init_vfio(char *pci_addr)
 {
     char path[PATH_MAX],iommu_group_path[PATH_MAX];
-    snprintf(path,sizeof(path),"/sys/buf/pci/devices/%s/",pci_addr);
+    snprintf(path,sizeof(path),"/sys/bus/pci/devices/%s/",pci_addr);
     
     struct stat buf;
     int ret = stat(path,&buf);
