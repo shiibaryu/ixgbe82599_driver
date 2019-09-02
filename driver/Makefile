@@ -1,4 +1,4 @@
-objs = app.o init.o lib.o vfio.o stats.o
+objs = app.o init.o lib.o vfio.o stats.o pci.o
 
 app: $(objs)
 	gcc -Wall -O2 -o app $(objs)
@@ -18,7 +18,10 @@ vfio.o: vfio.c
 stats.o: stats.c
 	gcc -c stats.c
 
-app.o: init.h lib.h vfio.h stats.h ixgbe.h
+pci.o: pci.c
+	gcc -c pci.c
+
+app.o: init.h lib.h vfio.h stats.h pci.h ixgbe.h
 
 .PHONY: clean
 clean:

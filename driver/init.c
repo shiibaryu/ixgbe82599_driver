@@ -518,7 +518,7 @@ struct ixgbe_device *do_ixgbe(char *pci_addr,uint16_t rx_queue,uint16_t tx_queue
     uint16_t device_id;
     pread(config_fd,&device_id,2,2);
 
-    info("vendor id: %d  device_id: %d",vendor_id,device_id);
+    info("vendor id: %x  device_id: %x",vendor_id,device_id);
     close(config_fd);
     info("go start_ixgbe()");
 
