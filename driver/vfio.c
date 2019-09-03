@@ -42,7 +42,7 @@ void vfio_enable_dma(int vfio_fd)
     pwrite(vfio_fd,&dma,2,conf_reg.offset + command_register_offset);
 }
 
-int init_vfio(char *pci_addr)
+int init_vfio(const char *pci_addr)
 {
     char path[PATH_MAX],iommu_group_path[PATH_MAX];
     snprintf(path,sizeof(path),"/sys/bus/pci/devices/%s/",pci_addr);
@@ -61,10 +61,10 @@ int init_vfio(char *pci_addr)
     sscanf(group_name,"%d",&group_id);
     info("get iommu group id");
 
-    unsigned short flag = 0;
+    int flag=0;
     int container = get_vfio_container();
     if(container = -1){
-        flag = 1;
+	flag = 1;
         /*create new container*/
         container = open("/dev/vfio/vfio",O_RDWR);
         set_vfio_container(container);

@@ -22,7 +22,7 @@
 } while(0)
 
 
-uintptr_t vtop(uintptr_t vaddr);
+static uintptr_t virt_to_phys(void* vaddr);
 struct dma_address allocate_dma_address(uint32_t ring_size);
 struct mempool *allocate_mempool_mem(uint32_t num_entries,uint32_t entry_size);
 static inline void set_reg32(uint8_t *addr,int reg,uint32_t value){

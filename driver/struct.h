@@ -10,7 +10,7 @@ struct ixgbe_device{
     uint8_t *addr;
     void *tx_queues;
     void *rx_queues;
-    char *pci_addr;
+    const char *pci_addr;
     int device_id;
     uint16_t num_rx_queues;
     uint16_t num_tx_queues;

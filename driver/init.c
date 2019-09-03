@@ -102,7 +102,7 @@ void init_rx_queue(struct ixgbe_device *ix_dev)
         set_flag32(ix_dev->addr,IXGBE_SRRCTL(i), IXGBE_SRRCTL_DROP_EN);
 
         //bufferを割り当てるには、キューのサイズ(descriptor単体)とその個数でかける
-        uint32_t ring_size = sizeof(union ixgbe_adv_rx_desc) * NUM_RX_QUEUES;
+        uint32_t ring_size = sizeof(union ixgbe_adv_rx_desc) * NUM_RX_QUEUE_ENTRIES;
         struct dma_address dma_addr = allocate_dma_address(ring_size);
         
        //DMAアクティベーション初期の時、メモリにアクセスされることを防ぐために仮想アドレスを初期化?
@@ -118,13 +118,17 @@ void init_rx_queue(struct ixgbe_device *ix_dev)
         //headもtailも先頭
         set_reg32(ix_dev->addr,IXGBE_RDH(i),0);
         set_reg32(ix_dev->addr,IXGBE_RDT(i),0);
+	struct rx_queue *rxq = ((struct rx_queue*)(ix_dev->rx_queues)) + i;
+	rxq->num_entries = NUM_RX_QUEUE_ENTRIES;
+	rxq->rx_index = 0;
+	rxq->descriptors = (union ixgbe_adv_rx_desc*)dma_addr.virt_addr;
     }
 
     //rxをenableする前にやっておくこと
     set_flag32(ix_dev->addr,IXGBE_CTRL_EXT,IXGBE_CTRL_EXT_NS_DIS);
     for(uint16_t i=0;i< ix_dev->num_rx_queues;i++){
             //DCA -> direct cache access
-            unset_flag32(ix_dev->addr,IXGBE_DCA_RXCTRL(i), 0<<12);
+            unset_flag32(ix_dev->addr,IXGBE_DCA_RXCTRL(i), 1<<12);
     }
     info("end: init_rx_queue");
 }
@@ -151,10 +155,10 @@ void init_tx_reg(struct ixgbe_device *ix_dev)
     //IXGBE_HLREG0に設定したい内容のフラグを立てるためにorをとって立てる
     //今回だとcrcオフロードとパケットパディング 
     set_flag32(ix_dev->addr,IXGBE_HLREG0,IXGBE_HLREG0_TXCRCEN | IXGBE_HLREG0_TXPADEN);
+    set_reg32(ix_dev->addr, IXGBE_TXPBSIZE(0), IXGBE_TXPBSIZE_40KB);
     //tcpのセグメンテーション設定とか言われてるけどまだ喋れないのでパス
     //毎度毎度のpage size初期化
-    int i=0;
-    for(i=0;i<8;i++){
+    for(int i=1;i<8;i++){
         set_flag32(ix_dev->addr,IXGBE_TXPBSIZE(i),0);
     }
     //DCB->data center bridging(データセンターのトランスポートのロスレスのイーサネット拡張らしい
@@ -173,7 +177,7 @@ void init_tx_queue(struct ixgbe_device *ix_dev)
     for(i=0;i<ix_dev->num_tx_queues;i++){
         //キューの割り当て
         //レジスタの初期化
-        uint32_t tx_ring = sizeof(union ixgbe_adv_tx_desc)*NUM_TX_QUEUES;
+        uint32_t tx_ring = sizeof(union ixgbe_adv_tx_desc)*NUM_TX_QUEUE_ENTRIES;
         struct dma_address dma_addr = allocate_dma_address(tx_ring);
         
         //rxの時と同様例のテクニック
@@ -216,11 +220,11 @@ void init_tx(struct ixgbe_device *ix_dev)
     info("end: init_tx");
 }
 
-void start_rx_queue(struct ixgbe_device *ix_dev,uint16_t i)
+void start_rx_queue(struct ixgbe_device *ix_dev,uint16_t queue)
 {
-    info("start rx queue %d",i);
+    info("start rx queue %d",queue);
 
-    struct rx_queue *rxq = ((struct rx_queue*)(ix_dev->rx_queues)) + i;
+    struct rx_queue *rxq = ((struct rx_queue*)(ix_dev->rx_queues)) + queue;
     int mempool_size = NUM_RX_QUEUE_ENTRIES + NUM_TX_QUEUE_ENTRIES;
 
     rxq->mempool = allocate_mempool_mem(mempool_size,PKT_BUF_ENTRY_SIZE);
@@ -237,13 +241,13 @@ void start_rx_queue(struct ixgbe_device *ix_dev,uint16_t i)
             rxq->virtual_address[i] = buf;
     }
     //rx queueをenable
-    set_flag32(ix_dev->addr,IXGBE_RXDCTL(i),IXGBE_RXDCTL_ENABLE);
-    wait_clear_reg32(ix_dev->addr,IXGBE_RXDCTL(i),IXGBE_RXDCTL_ENABLE);
+    set_flag32(ix_dev->addr,IXGBE_RXDCTL(queue),IXGBE_RXDCTL_ENABLE);
+    wait_set_reg32(ix_dev->addr,IXGBE_RXDCTL(queue),IXGBE_RXDCTL_ENABLE);
     //もう一回初期化？？
-    set_reg32(ix_dev->addr,IXGBE_RDH(i),0);
-    set_reg32(ix_dev->addr,IXGBE_RDT(i),rxq->num_entries - 1);
+    set_reg32(ix_dev->addr,IXGBE_RDH(queue),0);
+    set_reg32(ix_dev->addr,IXGBE_RDT(queue),rxq->num_entries - 1);
     
-    info("start rx queue %d",i);
+    info("start rx queue %d",queue);
 }
 
 void start_tx_queue(struct ixgbe_device *ix_dev,int i)
@@ -252,7 +256,7 @@ void start_tx_queue(struct ixgbe_device *ix_dev,int i)
         struct tx_queue *txq = ((struct tx_queue*)(ix_dev->tx_queues)) + i;
 
         set_reg32(ix_dev->addr,IXGBE_TDH(i),0);
-        set_reg32(ix_dev->addr,IXGBE_TDT(i),txq->num_entries - 1);
+        set_reg32(ix_dev->addr,IXGBE_TDT(i),0);
 
         set_flag32(ix_dev->addr,IXGBE_TXDCTL(i),IXGBE_TXDCTL_ENABLE);
         wait_clear_reg32(ix_dev->addr,IXGBE_TXDCTL(i),IXGBE_TXDCTL_ENABLE);
@@ -402,7 +406,6 @@ void wait_for_link(struct ixgbe_device *ix_dev)
 /*initialization sequence*/
 void do_init_seq(struct ixgbe_device *ix_dev)
 {
-	info("start initialize sequence: address is %s",ix_dev->addr);
         
  	info("disable interruption");
     	set_reg32(ix_dev->addr,IXGBE_EIMC,0x7FFFFFFF);

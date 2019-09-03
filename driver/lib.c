@@ -19,28 +19,24 @@
 
 //const int TX_CLEAN_BATCH = 32;
 uint32_t path_id = 1;
-uintptr_t vtop(uintptr_t vaddr)
-{
-    FILE *pagemap;
-    uintptr_t paddr = 0;
-    int offset = (vaddr / sysconf(_SC_PAGESIZE)) * sizeof(uint64_t);
-    uint64_t e;
-    
-    if ((pagemap = fopen("/proc/self/pagemap", "r"))) {
-        if (lseek(fileno(pagemap), offset, SEEK_SET) == offset) {
-            if (fread(&e, sizeof(uint64_t), 1, pagemap)) {
-                if (e & (1ULL << 63)) { // page present ?
-                    paddr = e & ((1ULL << 54) - 1); // pfn mask
-                    paddr = paddr * sysconf(_SC_PAGESIZE);
-                    // add offset within page
-                    paddr = paddr | (vaddr & (sysconf(_SC_PAGESIZE) - 1));
-                }   
-            }   
-        }   
-        fclose(pagemap);
-    }   
-    return paddr;
-}   
+
+//from ixy
+static uintptr_t virt_to_phys(void* virt) {
+	long pagesize = sysconf(_SC_PAGESIZE);
+	int fd = open("/proc/self/pagemap", O_RDONLY);
+	if(fd = -1){
+		perror("failed to get fd");
+	}
+
+	lseek(fd, (uintptr_t) virt / pagesize * sizeof(uintptr_t), SEEK_SET);
+	uintptr_t phy = 0;
+	read(fd, &phy, sizeof(phy));
+	close(fd);
+	if (!phy) {
+		debug("failed to translate virtual address %p to physical address", virt);
+	}
+	return (phy & 0x7fffffffffffffULL) * pagesize + ((uintptr_t) virt) % pagesize;
+}
 
 struct dma_address allocate_dma_address(uint32_t ring_size)
 {
@@ -57,14 +53,14 @@ struct dma_address allocate_dma_address(uint32_t ring_size)
    //仮想アドレスが帰ってくるのでそれを物理にして、dma_address
    //に格納してreturn
    //ここで仮想アドレスget
-   uintptr_t virt_addr = (uintptr_t)mmap(NULL,ring_size,PROT_READ|PROT_WRITE,MAP_SHARED | MAP_HUGETLB,fd,0);
+   void *virt_addr = (void*)mmap(NULL,ring_size,PROT_READ|PROT_WRITE,MAP_SHARED | MAP_HUGETLB,fd,0);
 
    close(fd);
    unlink(path);
 
    return(struct dma_address){
-           .virt_addr = (void *)virt_addr,
-           .phy_addr =  vtop(virt_addr)
+           .virt_addr = virt_addr,
+           .phy_addr =  virt_to_phys(virt_addr)
    };
 }
 
@@ -85,7 +81,7 @@ struct mempool *allocate_mempool_mem(uint32_t num_entries,uint32_t entry_size)
     for(uint32_t i=0;i<num_entries;i++){
         mempool->free_stack[i] = i;
         struct pkt_buf *buf = (struct pkt_buf *)(((uint8_t *)mempool->base_addr) + i * entry_size);
-        buf->buf_addr_phy = vtop((uintptr_t)buf);
+        buf->buf_addr_phy = virt_to_phys(buf);
         buf->mempool_idx = i;
         buf->mempool = mempool;
         buf->size = 0;
