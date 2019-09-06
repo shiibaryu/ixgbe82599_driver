@@ -48,6 +48,7 @@ int main(int argc,char *argv[])
     //print_stats(&ix_stat2);
     uint16_t i=0;
     while(true){
+            info("now in while");
             struct pkt_buf *rtx_buf[BATCH_SIZE];
             uint32_t rx_b = rx_batch(ix_rx,0,rtx_buf,BATCH_SIZE);
             rtx_buf[0]->data[1]++;
@@ -64,7 +65,7 @@ int main(int argc,char *argv[])
                 prev_time = now_time;
             }
             i++;
-            if(i>100){
+            if(i>10){
                     break;
             }
     }

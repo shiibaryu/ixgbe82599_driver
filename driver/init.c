@@ -39,6 +39,8 @@ const int MIN_MEMPOOL_ENTRIES = 4096;
 
 const int TX_CLEAN_BATCH = 32;
 
+volatile int VFIO_CHK = 0;
+
 //PHYとLINKの設定
 void init_link(struct ixgbe_device *ix_dev)
 {
@@ -102,8 +104,11 @@ void init_rx_queue(struct ixgbe_device *ix_dev)
         set_flag32(ix_dev->addr,IXGBE_SRRCTL(i), IXGBE_SRRCTL_DROP_EN);
 
         //bufferを割り当てるには、キューのサイズ(descriptor単体)とその個数でかける
-        uint32_t ring_size = sizeof(union ixgbe_adv_rx_desc) * NUM_RX_QUEUE_ENTRIES;
-        struct dma_address dma_addr = allocate_dma_address(ring_size);
+        uint32_t ring_size = sizeof(union ixgbe_adv_rx_desc)*NUM_RX_QUEUE_ENTRIES;
+	info("");
+	info("");
+	info("");
+        struct dma_address dma_addr = allocate_dma_address(ring_size,VFIO_CHK);
         
        //DMAアクティベーション初期の時、メモリにアクセスされることを防ぐために仮想アドレスを初期化?
         memset(dma_addr.virt_addr,-1,ring_size);
@@ -178,7 +183,7 @@ void init_tx_queue(struct ixgbe_device *ix_dev)
         //キューの割り当て
         //レジスタの初期化
         uint32_t tx_ring = sizeof(union ixgbe_adv_tx_desc)*NUM_TX_QUEUE_ENTRIES;
-        struct dma_address dma_addr = allocate_dma_address(tx_ring);
+        struct dma_address dma_addr = allocate_dma_address(tx_ring,VFIO_CHK);
         
         //rxの時と同様例のテクニック
         memset(dma_addr.virt_addr,-1,tx_ring);
@@ -276,16 +281,25 @@ uint32_t rx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
     //ホストメモリーのreceive queueにデータをおくつ
     //receive descriptorの状態更新(RDH,RDTを動かしたりとか)
 
+    info("start: rx_batch");
+    info("set rx_queue");
     struct rx_queue *rxq = ((struct rx_queue *)(ix_dev->rx_queues)) + queue_id;
     uint16_t rx_index = rxq->rx_index;
     uint16_t prev_rx_index = rxq->rx_index;
     uint32_t i;
     for(i=0;i<num_buf;i++){
+	    info("now in for");
             volatile union ixgbe_adv_rx_desc *rxd = rxq->descriptors + rx_index;
-            if(rxd->wb.upper.status_error & IXGBE_RXDADV_STAT_DD){
-                    if(!(rxd->wb.upper.status_error & IXGBE_RXDADV_STAT_EOP)){
+	    info("rx_index %d",rx_index);
+	    uint32_t status = rxd->wb.upper.status_error;
+	    info("pro");
+            if(status & IXGBE_RXDADV_STAT_DD){
+		    info("rxd_adv_stat_dd");
+                    if(!(status & IXGBE_RXDADV_STAT_EOP)){
                             debug("multi_segment packt not supported!");
                     }
+                info("prepare for adv_rx_desc");
+		return 0;
                 union ixgbe_adv_rx_desc desc = *rxd;
                 struct pkt_buf *buf = (struct pkt_buf *)rxq->virtual_address[rx_index];
                 buf->size = desc.wb.upper.length;
@@ -296,7 +310,7 @@ uint32_t rx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
                     perror("failed to allocate pkt_buf");
                     return -1;
                 }
-            
+           	info("set adv_rx_desc"); 
                 rxd->read.pkt_addr = p_buf->buf_addr_phy + offsetof(struct pkt_buf,data);
                 rxd->read.hdr_addr = 0;
                 rxq->virtual_address[rx_index] = p_buf;
@@ -304,18 +318,20 @@ uint32_t rx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
                 prev_rx_index = rx_index;
                 rx_index = wrap_ring(rx_index,rxq->num_entries);
             }
-            else{break;}
+            else{info("else");break;}
     }
     if(rx_index != prev_rx_index){
             set_reg32(ix_dev->addr,IXGBE_RDT(queue_id),prev_rx_index);
             rxq->rx_index = rx_index;
     }
+    info("end: rx_back");
     return i;
 }
 
 
 uint32_t tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *bufs[],uint32_t num_bufs)
 {
+    info("tx_batch");
     struct tx_queue *txq = ((struct tx_queue*)(ix_dev->tx_queues)) + queue_id;
     uint16_t tx_index = txq->tx_index;
     uint16_t clean_index = txq->clean_index;
@@ -364,6 +380,7 @@ uint32_t tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
             txd->read.olinfo_status = buf->size >> IXGBE_ADVTXD_PAYLEN_SHIFT;
     }
     set_reg32(ix_dev->addr,IXGBE_TDT(queue_id),tx_index);
+    info("end: tx_batch");
     return sent;
 }
 
@@ -473,6 +490,8 @@ struct ixgbe_device *start_ixgbe(const char *pci_addr,uint16_t rx_queues,uint16_
    //strdup()->文字列をコピーして返す
    ix_dev->pci_addr = strdup(pci_addr);
    info("pci addr %s",ix_dev->pci_addr);
+   ix_dev->num_rx_queues = rx_queues;
+   ix_dev->num_tx_queues = tx_queues;
 
    char path[PATH_MAX];
    snprintf(path,PATH_MAX,"/sys/bus/pci/devices/%s/iommu_group",pci_addr);
@@ -490,6 +509,7 @@ struct ixgbe_device *start_ixgbe(const char *pci_addr,uint16_t rx_queues,uint16_
 
    if(ix_dev->vfio){
            ix_dev->addr = vfio_map_region(ix_dev->vfio_fd,VFIO_PCI_BAR0_REGION_INDEX);
+	   VFIO_CHK +=1;
           // ("map region for vfio: address %d",ix_dev->addr);
    }
    else{

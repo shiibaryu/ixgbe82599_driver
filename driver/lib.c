@@ -9,6 +9,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/file.h>
+#include <linux/mman.h>
 #include <linux/limits.h>
 #include <linux/vfio.h>
 #include <sys/mman.h>
@@ -16,6 +17,7 @@
 #include "lib.h"
 #include "ixgbe.h"
 #include "struct.h"
+#include "vfio.h"
 
 //const int TX_CLEAN_BATCH = 32;
 uint32_t path_id = 1;
@@ -38,30 +40,42 @@ static uintptr_t virt_to_phys(void* virt) {
 	return (phy & 0x7fffffffffffffULL) * pagesize + ((uintptr_t) virt) % pagesize;
 }
 
-struct dma_address allocate_dma_address(uint32_t ring_size)
+struct dma_address allocate_dma_address(uint32_t ring_size,volatile int flag)
 {
-    char path[PATH_MAX];
-    uint32_t this_id;
+    if(flag){
+	info("allocating dma memory via vfio");
+	void* virt_addr = (void*) mmap(NULL,ring_size,PROT_READ|PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
+	uint64_t iova = (uint64_t) vfio_map_dma(virt_addr,ring_size);
+	return (struct dma_address){
+			// for VFIO, this needs to point to the device view memory = IOVA!
+		.virt_addr = virt_addr,
+		.phy_addr = iova
+	};
+    }
+    else{
+	char path[PATH_MAX];
+    	uint32_t this_id;
 
-   //ringサイズ分のページをmap
-   //まずはメモリ確保のためのファイルへのアクセスを得るため、ファイルディスクリプターをもらう
-    this_id = __sync_fetch_and_add(&path_id,1);
-    snprintf(path,PATH_MAX,"/mnt/huge/ixgbe-%d-%d",this_id,getpid());
-    int fd = open(path,O_CREAT|O_RDWR,S_IRWXU);
-    //ring_size以上は切り捨てる
-    ftruncate(fd,(off_t)ring_size);
-   //仮想アドレスが帰ってくるのでそれを物理にして、dma_address
-   //に格納してreturn
-   //ここで仮想アドレスget
-   void *virt_addr = (void*)mmap(NULL,ring_size,PROT_READ|PROT_WRITE,MAP_SHARED | MAP_HUGETLB,fd,0);
+   	//ringサイズ分のページをmap
+   	//まずはメモリ確保のためのファイルへのアクセスを得るため、ファイルディスクリプターをもらう
+    	this_id = __sync_fetch_and_add(&path_id,1);
+    	snprintf(path,PATH_MAX,"/mnt/huge/ixgbe-%d-%d",this_id,getpid());
+    	int fd = open(path,O_CREAT|O_RDWR,S_IRWXU);
+    	//ring_size以上は切り捨てる
+    	ftruncate(fd,(off_t)ring_size);
+   	//仮想アドレスが帰ってくるのでそれを物理にして、dma_address
+   	//に格納してreturn
+   	//ここで仮想アドレスget
+   	void *virt_addr = (void*)mmap(NULL,ring_size,PROT_READ|PROT_WRITE,MAP_SHARED | MAP_HUGETLB,fd,0);
 
-   close(fd);
-   unlink(path);
+   	close(fd);
+   	unlink(path);
 
-   return(struct dma_address){
-           .virt_addr = virt_addr,
-           .phy_addr =  virt_to_phys(virt_addr)
-   };
+   	return(struct dma_address){
+           	.virt_addr = virt_addr,
+           	.phy_addr =  virt_to_phys(virt_addr)
+   	};
+     }
 }
 
 /*ディスクリプターにパケットが届いた時にそれを格納するためのメモリープール*/
@@ -72,7 +86,7 @@ struct mempool *allocate_mempool_mem(uint32_t num_entries,uint32_t entry_size)
 
     struct mempool *mempool = (struct mempool*)malloc(sizeof(struct mempool) + num_entries * sizeof(uint32_t));
     
-    dma_addr = allocate_dma_address(num_entries*entry_size);
+    dma_addr = allocate_dma_address(num_entries*entry_size,1);
     mempool->num_entries = num_entries;
     mempool->num_entries = entry_size;
     mempool->base_addr   = dma_addr.virt_addr;
