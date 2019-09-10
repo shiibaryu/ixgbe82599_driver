@@ -21,9 +21,11 @@
 
 //const int TX_CLEAN_BATCH = 32;
 uint32_t path_id = 1;
+uint32_t page_id = 1;
 
 //from ixy
 static uintptr_t virt_to_phys(void* virt) {
+	info("virt to phys");
 	long pagesize = sysconf(_SC_PAGESIZE);
 	int fd = open("/proc/self/pagemap", O_RDONLY);
 	if(fd = -1){
@@ -40,47 +42,48 @@ static uintptr_t virt_to_phys(void* virt) {
 	return (phy & 0x7fffffffffffffULL) * pagesize + ((uintptr_t) virt) % pagesize;
 }
 
-struct dma_address allocate_dma_address(uint32_t ring_size,volatile int flag)
+struct dma_address allocate_dma_address(size_t size,volatile int flag)
 {
     if(flag){
 	info("allocating dma memory via vfio");
-	void* virt_addr = (void*) mmap(NULL,ring_size,PROT_READ|PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
-	uint64_t iova = (uint64_t) vfio_map_dma(virt_addr,ring_size);
-	return (struct dma_address){
-			// for VFIO, this needs to point to the device view memory = IOVA!
-		.virt_addr = virt_addr,
-		.phy_addr = iova
-	};
-    }
-    else{
-	char path[PATH_MAX];
-    	uint32_t this_id;
-
-   	//ringサイズ分のページをmap
-   	//まずはメモリ確保のためのファイルへのアクセスを得るため、ファイルディスクリプターをもらう
-    	this_id = __sync_fetch_and_add(&path_id,1);
-    	snprintf(path,PATH_MAX,"/mnt/huge/ixgbe-%d-%d",this_id,getpid());
-    	int fd = open(path,O_CREAT|O_RDWR,S_IRWXU);
-    	//ring_size以上は切り捨てる
-    	ftruncate(fd,(off_t)ring_size);
-   	//仮想アドレスが帰ってくるのでそれを物理にして、dma_address
-   	//に格納してreturn
-   	//ここで仮想アドレスget
-   	void *virt_addr = (void*)mmap(NULL,ring_size,PROT_READ|PROT_WRITE,MAP_SHARED | MAP_HUGETLB,fd,0);
-
-   	close(fd);
-   	unlink(path);
-
-   	return(struct dma_address){
-           	.virt_addr = virt_addr,
-           	.phy_addr =  virt_to_phys(virt_addr)
-   	};
-     }
+		void* virt_addr = (void*) mmap(NULL,size,PROT_READ|PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
+		uint64_t iova = (uint64_t) vfio_map_dma(virt_addr,size);
+		struct dma_address dma_addr;
+		dma_addr.virt_addr = virt_addr;
+		dma_addr.phy_addr = iova;
+		return dma_addr;
+	}
+	else{
+		info("allocating dma memory via huge page");
+	//適当なページsnprintf
+	//ftruncateでcut
+	//get fd to use open
+	//mmap using the fd
+	//return address virt and virt_to_phys(virt)
+		if(size % HUGE_PAGE_SIZE){
+			size = ((size >> HUGE_PAGE_BITS) + 1) << HUGE_PAGE_BITS;
+		}
+		
+		uint32_t id = __sync_fetch_and_add(&page_id,1);
+		char path[PATH_MAX];
+		snprintf(path,PATH_MAX,"/mnt/huge/ixy-%d-%d",id,getpid());
+		int fd = open(path,O_CREAT | O_RDWR,S_IRWXU);
+		ftruncate(fd,(off_t)size);
+		void *virt_addr = mmap(NULL,size,PROT_READ | PROT_WRITE,MAP_SHARED | MAP_HUGETLB,fd,0);	
+		mlock(virt_addr,size);
+		close(fd);
+		unlink(path);
+		return (struct dma_address){
+			.virt_addr = virt_addr,
+			.phy_addr = virt_to_phys(virt_addr)
+		};
+	}
 }
 
 /*ディスクリプターにパケットが届いた時にそれを格納するためのメモリープール*/
 struct mempool *allocate_mempool_mem(uint32_t num_entries,uint32_t entry_size)
 {
+    info("allocate_mempool_mem");
     struct dma_address dma_addr;
     entry_size = entry_size ? entry_size : 2048;
 
@@ -95,7 +98,7 @@ struct mempool *allocate_mempool_mem(uint32_t num_entries,uint32_t entry_size)
     for(uint32_t i=0;i<num_entries;i++){
         mempool->free_stack[i] = i;
         struct pkt_buf *buf = (struct pkt_buf *)(((uint8_t *)mempool->base_addr) + i * entry_size);
-        buf->buf_addr_phy = virt_to_phys(buf);
+        buf->buf_addr_phy = (uintptr_t)buf;
         buf->mempool_idx = i;
         buf->mempool = mempool;
         buf->size = 0;

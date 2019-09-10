@@ -57,6 +57,7 @@ uint8_t* pci_map_resource(const char *pci_addr)
 	int pci_fd = open(path,O_RDWR);
 	if(pci_fd = -1){
 		debug("failed to open fd");
+		exit(1);
 	}	
 	struct stat st;
 	fstat(pci_fd,&st);

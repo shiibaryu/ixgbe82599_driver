@@ -105,9 +105,6 @@ void init_rx_queue(struct ixgbe_device *ix_dev)
 
         //bufferを割り当てるには、キューのサイズ(descriptor単体)とその個数でかける
         uint32_t ring_size = sizeof(union ixgbe_adv_rx_desc)*NUM_RX_QUEUE_ENTRIES;
-	info("");
-	info("");
-	info("");
         struct dma_address dma_addr = allocate_dma_address(ring_size,VFIO_CHK);
         
        //DMAアクティベーション初期の時、メモリにアクセスされることを防ぐために仮想アドレスを初期化?
@@ -232,8 +229,7 @@ void start_rx_queue(struct ixgbe_device *ix_dev,uint16_t queue)
     struct rx_queue *rxq = ((struct rx_queue*)(ix_dev->rx_queues)) + queue;
     int mempool_size = NUM_RX_QUEUE_ENTRIES + NUM_TX_QUEUE_ENTRIES;
 
-    rxq->mempool = allocate_mempool_mem(mempool_size,PKT_BUF_ENTRY_SIZE);
-
+    rxq->mempool = allocate_mempool_mem(mempool_size < MIN_MEMPOOL_ENTRIES ? MIN_MEMPOOL_ENTRIES : mempool_size,PKT_BUF_ENTRY_SIZE);
     for(int i=0;i<rxq->num_entries;i++){
             volatile union ixgbe_adv_rx_desc *rxd = rxq->descriptors + i;
             struct pkt_buf *buf = alloc_pkt_buf(rxq->mempool);
@@ -264,7 +260,7 @@ void start_tx_queue(struct ixgbe_device *ix_dev,int i)
         set_reg32(ix_dev->addr,IXGBE_TDT(i),0);
 
         set_flag32(ix_dev->addr,IXGBE_TXDCTL(i),IXGBE_TXDCTL_ENABLE);
-        wait_clear_reg32(ix_dev->addr,IXGBE_TXDCTL(i),IXGBE_TXDCTL_ENABLE);
+        wait_set_reg32(ix_dev->addr,IXGBE_TXDCTL(i),IXGBE_TXDCTL_ENABLE);
         info("end: start_tx_queue %d",i);
 }
 
@@ -513,7 +509,6 @@ struct ixgbe_device *start_ixgbe(const char *pci_addr,uint16_t rx_queues,uint16_
           // ("map region for vfio: address %d",ix_dev->addr);
    }
    else{
-           debug("can't use vfio");
 	   info("use pci_map_resource");
 	   ix_dev->addr = pci_map_resource(pci_addr);
    }

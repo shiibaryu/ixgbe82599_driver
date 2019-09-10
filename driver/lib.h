@@ -6,6 +6,8 @@
 #define NUM_TX_QUEUES 512
 #define MAX_QUEUES 64
 #define SIZE_PKT_BUF_HEADROOM 40
+#define HUGE_PAGE_BITS 21
+#define HUGE_PAGE_SIZE (1 << HUGE_PAGE_BITS) 
 
 #ifndef NDEBUG
 #define debug(fmt, ...) do {\
@@ -22,8 +24,8 @@
 } while(0)
 
 
-static uintptr_t virt_to_phys(void* vaddr);
-struct dma_address allocate_dma_address(uint32_t ring_size,volatile int flag);
+static uintptr_t virt_to_phys(void* virt);
+struct dma_address allocate_dma_address(size_t ring_size,volatile int flag);
 struct mempool *allocate_mempool_mem(uint32_t num_entries,uint32_t entry_size);
 static inline void set_reg32(uint8_t *addr,int reg,uint32_t value){
     __asm__ volatile ("" : : : "memory");
