@@ -494,6 +494,7 @@ struct ixgbe_device *start_ixgbe(const char *pci_addr,uint16_t rx_queues,uint16_
 
    struct stat buf;
    ix_dev->vfio = stat(path,&buf) == 0;
+   ix_dev->vfio = false;
    if(ix_dev->vfio){
            info("initialize vfio");
            ix_dev->vfio_fd = init_vfio(pci_addr);
@@ -501,12 +502,10 @@ struct ixgbe_device *start_ixgbe(const char *pci_addr,uint16_t rx_queues,uint16_
            if(ix_dev->vfio_fd < 0){
                    debug("faled to get vfio_fd");
            }
-   }
-
-   if(ix_dev->vfio){
-           ix_dev->addr = vfio_map_region(ix_dev->vfio_fd,VFIO_PCI_BAR0_REGION_INDEX);
-	   VFIO_CHK +=1;
-          // ("map region for vfio: address %d",ix_dev->addr);
+	   ix_dev->addr = vfio_map_region(ix_dev->vfio_fd,VFIO_PCI_BAR0_REGION_INDEX);
+	   //ix_dev->iovamask = ix_dev->addr-1;
+  	   
+           info("done vfio_map_region()");
    }
    else{
 	   info("use pci_map_resource");
@@ -531,13 +530,11 @@ struct ixgbe_device *do_ixgbe(const char *pci_addr,uint16_t rx_queue,uint16_t tx
     if(config_fd < 0){
 	debug("failed to open config_fd");
     }
-    uint16_t vendor_id;
-    pread(config_fd,&vendor_id,2,0);
-    uint16_t device_id;
-    pread(config_fd,&device_id,2,2);
+    uint16_t vendor_id = read_io16(config_fd,0);
+    uint16_t device_id = read_io16(config_fd,2);
+    uint32_t class_id  = read_io32(config_fd,8) >> 24;
 
     info("vendor id: %x  device_id: %x",vendor_id,device_id);
-    close(config_fd);
     info("go start_ixgbe()");
 
     return start_ixgbe(pci_addr,rx_queue,tx_queue);

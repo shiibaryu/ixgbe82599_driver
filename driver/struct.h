@@ -14,8 +14,9 @@ struct ixgbe_device{
     int device_id;
     uint16_t num_rx_queues;
     uint16_t num_tx_queues;
+    int vfio_fd;  
     bool vfio;
-    int vfio_fd;
+    u64 iovamask;
 };
 
 struct dma_address{

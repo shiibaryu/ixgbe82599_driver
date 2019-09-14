@@ -14,6 +14,8 @@
 
 #include "lib.h"
 
+#define VFIO_IOVA 0x800000000
+
 ssize_t MIN_DMA_MEMORY = 4096;
 volatile int VFIO_CONTAINER_FILE_DESCRIPTOR = -1;
 
@@ -63,6 +65,7 @@ int init_vfio(const char *pci_addr)
 
     int flag=0;
     int container = get_vfio_container();
+    int vfio_gfd = 0;
     if(container = -1){
 	flag = 1;
         /*create new container*/
@@ -79,7 +82,9 @@ int init_vfio(const char *pci_addr)
     
     /*create vfio group*/
     snprintf(path,sizeof(path),"/dev/vfio/%d",group_id);
-    int vfio_gfd = open(path,O_RDWR);
+    if((vfio_gfd = open(path,O_RDWR)) < 0){
+		perror("failed to get vfio_gfd");
+   } 
     info("get vfio group fd %d",vfio_gfd);
 
     struct vfio_group_status group_status = {.argsz = sizeof(group_status)};
@@ -90,7 +95,7 @@ int init_vfio(const char *pci_addr)
     }
 
     /* Add the group to the container */
-	ioctl(vfio_gfd, VFIO_GROUP_SET_CONTAINER, &container);
+    ioctl(vfio_gfd, VFIO_GROUP_SET_CONTAINER, &container);
     if(flag){
             ret = ioctl(container,VFIO_SET_IOMMU,VFIO_TYPE1_IOMMU);
     }
@@ -118,17 +123,22 @@ uint8_t *vfio_map_region(int vfio_fd,int region_index)
 
 uint64_t vfio_map_dma(void *vaddr,uint32_t size)
 {
-   uint64_t iova = (uint64_t)vaddr;
+   //uint64_t iova = (uint64_t)vaddr;
+   __u64 vfio_mask = VFIO_BASE - 1;
    struct vfio_iommu_type1_dma_map dma_map ={
            .vaddr = (uint64_t)vaddr,
-           .iova  = iova,
+           .iova  = VFIO_IOVA,
            .size  = size < MIN_DMA_MEMORY ? MIN_DMA_MEMORY : size,
            .argsz = sizeof(dma_map),
            .flags = VFIO_DMA_MAP_FLAG_READ | VFIO_DMA_MAP_FLAG_WRITE};
    int container = get_vfio_container();
-   ioctl(container,VFIO_IOMMU_MAP_DMA,&dma_map);
    
-   return iova;
+   while(dma_map.iova){
+
+   	ioctl(container,VFIO_IOMMU_MAP_DMA,&dma_map);
+   }
+   
+   return dma_map.iova;
 }
 
 uint64_t vfio_unmap_dma(int vfio_fd,uint64_t iova,uint32_t size)
