@@ -27,7 +27,7 @@ static uintptr_t virt_to_phys(void* virt) {
 	long pagesize = sysconf(_SC_PAGESIZE);
 	int fd = open("/proc/self/pagemap", O_RDONLY);
 	if(fd == -1){
-		debug("failed to open");
+		perror("failed to open");
 	}
 	// pagemap is an array of pointers for each normal-sized page
 	lseek(fd, (uintptr_t) virt / pagesize * sizeof(uintptr_t),SEEK_SET);

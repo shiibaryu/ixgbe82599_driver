@@ -284,18 +284,14 @@ uint32_t rx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
     uint16_t prev_rx_index = rxq->rx_index;
     uint32_t i;
     for(i=0;i<num_buf;i++){
-	    info("now in for");
             volatile union ixgbe_adv_rx_desc *rxd = rxq->descriptors + rx_index;
 	    info("rx_index %d",rx_index);
 	    uint32_t status = rxd->wb.upper.status_error;
-	    info("pro");
             if(status & IXGBE_RXDADV_STAT_DD){
 		    info("rxd_adv_stat_dd");
                     if(!(status & IXGBE_RXDADV_STAT_EOP)){
                             debug("multi_segment packt not supported!");
                     }
-                info("prepare for adv_rx_desc");
-		return 0;
                 union ixgbe_adv_rx_desc desc = *rxd;
                 struct pkt_buf *buf = (struct pkt_buf *)rxq->virtual_address[rx_index];
                 buf->size = desc.wb.upper.length;
@@ -314,7 +310,6 @@ uint32_t rx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
                 prev_rx_index = rx_index;
                 rx_index = wrap_ring(rx_index,rxq->num_entries);
             }
-            else{info("else");break;}
     }
     if(rx_index != prev_rx_index){
             set_reg32(ix_dev->addr,IXGBE_RDT(queue_id),prev_rx_index);
@@ -373,7 +368,7 @@ uint32_t tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
             txq->tx_index = next_index;
             txd->read.buffer_addr = buf->buf_addr_phy + offsetof(struct pkt_buf,data);
             txd->read.cmd_type_len = IXGBE_ADVTXD_DCMD_EOP | IXGBE_ADVTXD_DCMD_RS | IXGBE_ADVTXD_DCMD_IFCS | IXGBE_ADVTXD_DCMD_DEXT | IXGBE_ADVTXD_DTYP_DATA | buf->size;
-            txd->read.olinfo_status = buf->size >> IXGBE_ADVTXD_PAYLEN_SHIFT;
+            txd->read.olinfo_status = buf->size << IXGBE_ADVTXD_PAYLEN_SHIFT;
     }
     set_reg32(ix_dev->addr,IXGBE_TDT(queue_id),tx_index);
     info("end: tx_batch");

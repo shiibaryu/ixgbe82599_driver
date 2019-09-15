@@ -1,8 +1,3 @@
-/*
-start_ixgbe()
-これによって、初期化とvfioのマップとかもできる
-そのあとパケット送信のtx・rx batch関数でパケット送信・受信
-*/
 #include <stddef.h>
 #include <stdint.h>
 #include <unistd.h>
@@ -24,52 +19,99 @@ start_ixgbe()
 #include "stats.h"
 #include "init.h"
 
-const int BATCH_SIZE = 32;
+#define PKT_SIZE 60
+
+const int BATCH_SIZE = 64;
+
+static const uint8_t pkt_data[] = {
+	0x01,0x02,0x03,0x04,0x05,0x06,
+	0x07,0x08,0x09,0x10,0x11,0x12,
+	0x08,0x13,
+	0x45,0x00,
+	(PKT_SIZE - 14) >> 8,
+	(PKT_SIZE - 14) & 0xFF,
+	0x00,0x00,0x00,0x00,
+	0x40,0x11,0x00,0x00,
+	0x0A,0x00,0x00,0x01,
+	0x0A,0x00,0x00,0x02,
+	0x00,0x2A,0x05,0x39,
+	(PKT_SIZE - 20 - 14) >> 8,
+	(PKT_SIZE - 20 - 14) & 0xFF,
+	0x00,0x00,
+	's','i','i','b'
+};
+
+static uint16_t calc_ip_checksum(uint8_t *data,uint32_t len)
+{
+	uint32_t cs = 0;
+	for(uint32_t i=0;i<len/2;i++){
+		cs += ((uint16_t*)data)[i];
+		if(cs > 0xFFFF){
+			cs = (cs & 0xFFFF) + 1;
+		}
+	}
+	return ~((uint16_t)cs);
+}
+
+static struct mempool *init_mempool()
+{
+	const int NUM_BUFS = 2048;
+	struct mempool *mempool = allocate_mempool_mem(NUM_BUFS,0);
+	struct pkt_buf *bufs[NUM_BUFS];
+	
+	for(int id=0;id < NUM_BUFS;id++){
+		struct pkt_buf *buf = alloc_pkt_buf(mempool);
+		buf->size = PKT_SIZE;
+		memcpy(buf->data,pkt_data,sizeof(pkt_data));
+		*(uint16_t*)(buf->data + 24) = calc_ip_checksum(buf->data + 14,20);
+		bufs[id] = buf;
+	}
+	for(int id=0;id<NUM_BUFS;id++){
+		pkt_buf_free(bufs[id]);
+	}
+	return mempool;
+}
 
 int main(int argc,char *argv[])
 {
-    if(argc != 3){
-            printf("Usage: %s <pci bus id 1> <pci bus id 2>\n",argv[0]);
-            return -1;
-    }
-    uint64_t prev_time = monotonic_time();
+	if(argc != 2){
+		printf("Usage: %s <pci bus id 1> <pci bus id 2>\n",argv[0]);
+            	return -1;
+    	}
+	struct mempool *memp = init_mempool();
+    	uint64_t prev_time = monotonic_time();
+	uint64_t now_time;
 
-    //初期化全部
-    struct ixgbe_device *ix_rx = do_ixgbe(argv[1],1,1);
-    struct ixgbe_device *ix_tx = do_ixgbe(argv[2],1,1);
+    	//初期化全部
+    	struct ixgbe_device *ix_tx = do_ixgbe(argv[1],1,1);
 
-    struct ixgbe_stats ix_stat;
-    //struct ixgbe_stats ix_stat2;
+    	struct ixgbe_stats stats,prev_stats;
 
-    clear_stats(&ix_stat);
-    print_stats(&ix_stat);
+    	clear_stats(&stats);
+	clear_stats(&prev_stats);
 
-    //init_stats(&ix_stat2);
-    //print_stats(&ix_stat2);
-    uint16_t i=0;
-    while(true){
-            info("now in while");
-            struct pkt_buf *rtx_buf[BATCH_SIZE];
-            uint32_t rx_b = rx_batch(ix_rx,0,rtx_buf,BATCH_SIZE);
-            rtx_buf[0]->data[1]++;
-            uint32_t tx_b = tx_batch(ix_tx,0,rtx_buf,rx_b);
+	uint32_t seq_num = 0;
+	struct pkt_buf *buf[BATCH_SIZE];
+	uint32_t counter=0;
 
-            for(uint32_t i=tx_b;i<rx_b;i++){
-                    pkt_buf_free(rtx_buf[i]);
-            }
-
-            uint64_t now_time = monotonic_time();
-            if(now_time-prev_time > 1000000000){
-                read_stats(ix_rx,&ix_stat);
-                print_stats(&ix_stat);
-                prev_time = now_time;
-            }
-            i++;
-            if(i>10){
-                    break;
-            }
-    }
-
-    return 0;
+	while(true){
+		//receiveの準備
+		//transmitの準備
+		//statの更新
+		alloc_pkt_buf_batch(memp,buf,BATCH_SIZE);
+		for(uint32_t i=0;i<BATCH_SIZE;i++){
+			*(uint32_t*)(buf[i]->data + PKT_SIZE - 4) = seq_num++;
+		}
+		sleep(1);
+		uint32_t tx_b = tx_batch(ix_tx,0,buf,BATCH_SIZE);
+		printf("%d\n",tx_b);
+	
+		now_time = monotonic_time();
+		if(now_time - prev_time > 1000*1000*1000){	
+			read_stats(ix_tx,&stats);
+			print_stats(&stats);
+		}
+	}
+	return 0;
 }
 

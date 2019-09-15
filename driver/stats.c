@@ -31,8 +31,8 @@ void read_stats(struct ixgbe_device *ix_dev,struct ixgbe_stats *ix_stats)
 
 void print_stats(struct ixgbe_stats *ix_stats)
 {
-    printf("RX pkt: %d\n",ix_stats->rx_pkts_num);
-    printf("%ld bytes\n",ix_stats->rx_bytes);
+    //printf("RX pkt: %d\n",ix_stats->rx_pkts_num);
+    //printf("%ld bytes\n",ix_stats->rx_bytes);
 
     printf("TX pkt: %d\n",ix_stats->tx_pkts_num);
     printf("%ld bytes\n",ix_stats->tx_bytes);

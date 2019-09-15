@@ -113,6 +113,7 @@ static inline uint8_t read_io8(int fd,size_t offset){
         return temp;
 }
 struct pkt_buf *alloc_pkt_buf(struct mempool *mempool);
+struct pkt_buf *alloc_pkt_buf_batch(struct mempool *mempool,struct pkt_buf *buf[],uint32_t num_bufs);
 void pkt_buf_free(struct pkt_buf *buf);
 
 
