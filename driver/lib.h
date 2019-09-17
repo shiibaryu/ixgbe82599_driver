@@ -27,6 +27,10 @@
 static uintptr_t virt_to_phys(void* virt);
 struct dma_address allocate_dma_address(size_t ring_size,volatile int flag);
 struct mempool *allocate_mempool_mem(uint32_t num_entries,uint32_t entry_size);
+struct pkt_buf *alloc_pkt_buf(struct mempool *mempool);
+uint32_t alloc_pkt_buf_batch(struct mempool *mempool,struct pkt_buf *buf[],uint32_t num_bufs);
+void pkt_buf_free(struct pkt_buf *buf);
+
 static inline void set_reg32(uint8_t *addr,int reg,uint32_t value){
     __asm__ volatile ("" : : : "memory");
     *((volatile uint32_t *)(addr+reg)) = value;
@@ -112,8 +116,5 @@ static inline uint8_t read_io8(int fd,size_t offset){
         }
         return temp;
 }
-struct pkt_buf *alloc_pkt_buf(struct mempool *mempool);
-struct pkt_buf *alloc_pkt_buf_batch(struct mempool *mempool,struct pkt_buf *buf[],uint32_t num_bufs);
-void pkt_buf_free(struct pkt_buf *buf);
 
 
