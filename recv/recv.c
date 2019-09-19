@@ -83,7 +83,7 @@ int main(int argc,char *argv[])
 	uint64_t now_time;
 
     	//初期化全部
-    	struct ixgbe_device *ix_tx = do_ixgbe(argv[1],1,1);
+    	struct ixgbe_device *ix_rx = do_ixgbe(argv[1],1,1);
 
     	struct ixgbe_stats stats,prev_stats;
 
@@ -95,20 +95,13 @@ int main(int argc,char *argv[])
 	uint32_t counter=0;
 
 	while(true){
-		//receiveの準備
-		//transmitの準備
-		//statの更新
-		alloc_pkt_buf_batch(memp,buf,BATCH_SIZE);
-		for(uint32_t i=0;i<BATCH_SIZE;i++){
-			*(uint32_t*)(buf[i]->data + PKT_SIZE - 4) = seq_num++;
-		}
 		sleep(1);
-		uint32_t tx_b = tx_batch(ix_tx,0,buf,BATCH_SIZE);
-	
+		uint32_t num_rx = rx_batch(ix_rx,30,buf,BATCH_SIZE);	
+
 		now_time = monotonic_time();
 		if(now_time - prev_time > 1000*1000*1000){	
-			read_stats(ix_tx,&stats);
-			print_tx_stats(&stats);
+			read_stats(ix_rx,&stats);
+			print_rx_stats(&stats);
 		}
 	}
 	return 0;
