@@ -37,7 +37,7 @@ const int NUM_TX_QUEUE_ENTRIES = 512;
 const int PKT_BUF_ENTRY_SIZE = 2048;
 const int MIN_MEMPOOL_ENTRIES = 4096;
 
-const int TX_CLEAN_BATCH = 32;
+const int TX_CLEAN_BATCH = 30;
 
 volatile int VFIO_CHK = 0;
 

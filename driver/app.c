@@ -94,11 +94,12 @@ int main(int argc,char *argv[])
 	struct pkt_buf *buf[BATCH_SIZE];
 	uint32_t counter=0;
 
+	alloc_pkt_buf_batch(memp,buf,BATCH_SIZE);
 	while(true){
 		//receiveの準備
 		//transmitの準備
 		//statの更新
-		alloc_pkt_buf_batch(memp,buf,BATCH_SIZE);
+		//alloc_pkt_buf_batch(memp,buf,BATCH_SIZE);
 		for(uint32_t i=0;i<BATCH_SIZE;i++){
 			*(uint32_t*)(buf[i]->data + PKT_SIZE - 4) = seq_num++;
 		}
