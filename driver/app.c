@@ -99,7 +99,6 @@ int main(int argc,char *argv[])
 		//receiveの準備
 		//transmitの準備
 		//statの更新
-		//alloc_pkt_buf_batch(memp,buf,BATCH_SIZE);
 		for(uint32_t i=0;i<BATCH_SIZE;i++){
 			*(uint32_t*)(buf[i]->data + PKT_SIZE - 4) = seq_num++;
 		}
@@ -110,6 +109,9 @@ int main(int argc,char *argv[])
 		if(now_time - prev_time > 1000*1000*1000){	
 			read_stats(ix_tx,&stats);
 			print_tx_stats(&stats);
+		}
+		if(seq_num%100==0){
+			alloc_pkt_buf_batch(memp,buf,BATCH_SIZE);
 		}
 	}
 	return 0;

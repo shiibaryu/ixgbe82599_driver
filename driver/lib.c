@@ -19,7 +19,6 @@
 #include "struct.h"
 #include "vfio.h"
 
-//const int TX_CLEAN_BATCH = 32;
 uint32_t page_id = 1;
 
 
@@ -108,8 +107,8 @@ struct mempool *allocate_mempool_mem(uint32_t num_entries,uint32_t entry_size)
 uint32_t alloc_pkt_buf_batch(struct mempool *mempool,struct pkt_buf *buf[],uint32_t num_bufs)
 {
    if(mempool->free_stack_top < num_bufs){
-           printf("memory pool %p only has %d free bufs, requested %d",mempool,mempool->buf_size,num_bufs);
            num_bufs = mempool->free_stack_top;
+           pkt_buf_free(buf);
    }
     for(uint32_t i=0;i<num_bufs;i++){
             uint32_t entry_id = mempool->free_stack[--mempool->free_stack_top];

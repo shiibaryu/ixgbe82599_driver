@@ -29,7 +29,6 @@ int main(int argc,char *argv[])
 		printf("Usage: %s <pci bus id 1> <pci bus id 2>\n",argv[0]);
             	return -1;
     	}
-	struct mempool *memp = init_mempool();
     	uint64_t prev_time = monotonic_time();
 	uint64_t now_time;
 
