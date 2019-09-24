@@ -285,30 +285,30 @@ uint32_t rx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
             volatile union ixgbe_adv_rx_desc *rxd = rxq->descriptors + rx_index;
 	    uint32_t status = rxd->wb.upper.status_error;
             if(status & IXGBE_RXDADV_STAT_DD){
-		    info("rxd_adv_stat_dd");
+		    info("yes");
                     if(!(status & IXGBE_RXDADV_STAT_EOP)){
                             debug("multi_segment packt not supported!");
                     }
                 union ixgbe_adv_rx_desc desc = *rxd;
+	       	uint32_t data = desc.wb.lower.lo_dword.data;
                 struct pkt_buf *buf = (struct pkt_buf *)rxq->virtual_address[rx_index];
                 buf->size = desc.wb.upper.length;
-
                 //そのポインタをread.pkt_addrに登録
                 struct pkt_buf *p_buf = alloc_pkt_buf(rxq->mempool);
                 if(!p_buf){
                     perror("failed to allocate pkt_buf");
                     return -1;
                 }
-           	info("set adv_rx_desc"); 
                 rxd->read.pkt_addr = p_buf->buf_addr_phy + offsetof(struct pkt_buf,data);
                 rxd->read.hdr_addr = 0;
                 rxq->virtual_address[rx_index] = p_buf;
                 bufs[i]=buf;
                 prev_rx_index = rx_index;
                 rx_index = wrap_ring(rx_index,rxq->num_entries);
-            }
+           } 
     }
     if(rx_index != prev_rx_index){
+	    info("yes");
             set_reg32(ix_dev->addr,IXGBE_RDT(queue_id),prev_rx_index);
             rxq->rx_index = rx_index;
     }

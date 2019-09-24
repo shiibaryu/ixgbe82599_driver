@@ -24,7 +24,6 @@ struct dma_address{
     uintptr_t phy_addr;
 };
 
-
 struct mempool{
     void *base_addr;
     uint32_t buf_size;

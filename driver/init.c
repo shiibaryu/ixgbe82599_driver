@@ -324,11 +324,11 @@ uint32_t tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
 {
     info("tx_batch");
     struct tx_queue *txq = ((struct tx_queue*)(ix_dev->tx_queues)) + queue_id;
-    uint16_t tx_index = txq->tx_index;
+    //uint16_t tx_index = txq->tx_index;
     uint16_t clean_index = txq->clean_index;
 
     while(true){
-            int32_t cleanable = tx_index - clean_index;
+            int32_t cleanable = txq->tx_index - clean_index;
             if(cleanable < 0){
                     cleanable = txq->num_entries + cleanable;
             }
@@ -343,6 +343,7 @@ uint32_t tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
             uint32_t status = txd->wb.status;
             if(status & IXGBE_ADVTXD_STAT_DD){
                     int32_t i = clean_index;
+		    info("yes");
                     while(true){
                             struct pkt_buf *buf = txq->virtual_address[i];
                             pkt_buf_free(buf);
@@ -358,19 +359,19 @@ uint32_t tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
     txq->clean_index = clean_index;
     uint32_t sent;
     for(sent=0;sent<num_bufs;sent++){
-            uint32_t next_index = wrap_ring(tx_index,txq->num_entries);
+            uint32_t next_index = wrap_ring(txq->tx_index,txq->num_entries);
             if(clean_index == next_index){
                     break;
             }
             struct pkt_buf *buf = bufs[sent];
-            txq->virtual_address[tx_index] = (void *)buf;
-            volatile union ixgbe_adv_tx_desc *txd = txq->descriptors + tx_index;
+            txq->virtual_address[txq->tx_index] = (void *)buf;
+            volatile union ixgbe_adv_tx_desc *txd = txq->descriptors + txq->tx_index;
             txq->tx_index = next_index;
             txd->read.buffer_addr = buf->buf_addr_phy + offsetof(struct pkt_buf,data);
             txd->read.cmd_type_len = IXGBE_ADVTXD_DCMD_EOP | IXGBE_ADVTXD_DCMD_RS | IXGBE_ADVTXD_DCMD_IFCS | IXGBE_ADVTXD_DCMD_DEXT | IXGBE_ADVTXD_DTYP_DATA | buf->size;
             txd->read.olinfo_status = buf->size << IXGBE_ADVTXD_PAYLEN_SHIFT;
     }
-    set_reg32(ix_dev->addr,IXGBE_TDT(queue_id),tx_index);
+    set_reg32(ix_dev->addr,IXGBE_TDT(queue_id),txq->tx_index);
     info("end: tx_batch");
     return sent;
 }
