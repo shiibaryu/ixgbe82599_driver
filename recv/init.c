@@ -289,7 +289,7 @@ uint32_t rx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
                     }
                 union ixgbe_adv_rx_desc desc = *rxd;
 	       	uint32_t data = desc.wb.lower.lo_dword.data;
-		info("%d",data);
+		//info("%d",data);
                 struct pkt_buf *buf = (struct pkt_buf *)rxq->virtual_address[rx_index];
                 buf->size = desc.wb.upper.length;
                 //そのポインタをread.pkt_addrに登録
@@ -307,7 +307,6 @@ uint32_t rx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
            } 
     }
     if(rx_index != prev_rx_index){
-	    info("yes");
             set_reg32(ix_dev->addr,IXGBE_RDT(queue_id),prev_rx_index);
             rxq->rx_index = rx_index;
     }
