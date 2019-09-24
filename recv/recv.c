@@ -46,7 +46,7 @@ int main(int argc,char *argv[])
 
 	while(true){
 		sleep(1);
-		uint32_t num_rx = rx_batch(ix_rx,30,buf,BATCH_SIZE);	
+		uint32_t num_rx = rx_batch(ix_rx,0,buf,BATCH_SIZE);	
 
 		now_time = monotonic_time();
 		if(now_time - prev_time > 1000*1000*1000){	

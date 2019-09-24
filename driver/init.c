@@ -343,7 +343,6 @@ uint32_t tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
             uint32_t status = txd->wb.status;
             if(status & IXGBE_ADVTXD_STAT_DD){
                     int32_t i = clean_index;
-		    info("yes");
                     while(true){
                             struct pkt_buf *buf = txq->virtual_address[i];
                             pkt_buf_free(buf);

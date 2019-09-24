@@ -71,7 +71,7 @@ void init_rx_reg(struct ixgbe_device *ix_dev)
     int i;
     info("start: init_rx_reg");
     set_reg32(ix_dev->addr,IXGBE_RXPBSIZE(0),IXGBE_RXPBSIZE_128KB);
-    for(i=0;i<8;i++){
+    for(i=1;i<8;i++){
             set_reg32(ix_dev->addr,IXGBE_RXPBSIZE(i),0);
     }
 
@@ -137,7 +137,7 @@ void init_rx_queue(struct ixgbe_device *ix_dev)
 
 void init_rx(struct ixgbe_device *ix_dev)
 {
-    info("start: init_tx");
+    info("start: init_rx");
     //receiveを止める
     unset_flag32(ix_dev->addr,IXGBE_RXCTRL,IXGBE_RXCTRL_RXEN);
     //初期化処理
@@ -148,7 +148,7 @@ void init_rx(struct ixgbe_device *ix_dev)
     init_rx_queue(ix_dev);
     //receive再開
     set_flag32(ix_dev->addr,IXGBE_RXCTRL,IXGBE_RXCTRL_RXEN);
-    info("end: init_tx");
+    info("end: init_rx");
 }
 
 void init_tx_reg(struct ixgbe_device *ix_dev)
@@ -244,7 +244,6 @@ void start_rx_queue(struct ixgbe_device *ix_dev,uint16_t queue)
     //rx queueをenable
     set_flag32(ix_dev->addr,IXGBE_RXDCTL(queue),IXGBE_RXDCTL_ENABLE);
     wait_set_reg32(ix_dev->addr,IXGBE_RXDCTL(queue),IXGBE_RXDCTL_ENABLE);
-    //もう一回初期化？？
     set_reg32(ix_dev->addr,IXGBE_RDH(queue),0);
     set_reg32(ix_dev->addr,IXGBE_RDT(queue),rxq->num_entries - 1);
     
@@ -285,12 +284,12 @@ uint32_t rx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
             volatile union ixgbe_adv_rx_desc *rxd = rxq->descriptors + rx_index;
 	    uint32_t status = rxd->wb.upper.status_error;
             if(status & IXGBE_RXDADV_STAT_DD){
-		    info("yes");
                     if(!(status & IXGBE_RXDADV_STAT_EOP)){
                             debug("multi_segment packt not supported!");
                     }
                 union ixgbe_adv_rx_desc desc = *rxd;
 	       	uint32_t data = desc.wb.lower.lo_dword.data;
+		info("%d",data);
                 struct pkt_buf *buf = (struct pkt_buf *)rxq->virtual_address[rx_index];
                 buf->size = desc.wb.upper.length;
                 //そのポインタをread.pkt_addrに登録
