@@ -21,7 +21,7 @@
 
 #define PKT_SIZE 60
 
-const int BATCH_SIZE = 64;
+const int BATCH_SIZE = 500;
 
 int main(int argc,char *argv[])
 {

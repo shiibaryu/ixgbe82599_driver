@@ -37,7 +37,7 @@ const int NUM_TX_QUEUE_ENTRIES = 512;
 const int PKT_BUF_ENTRY_SIZE = 2048;
 const int MIN_MEMPOOL_ENTRIES = 4096;
 
-const int TX_CLEAN_BATCH = 64;
+const int TX_CLEAN_BATCH = 60;
 
 volatile int VFIO_CHK = 0;
 
@@ -322,7 +322,7 @@ uint32_t rx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
 
 uint32_t tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *bufs[],uint32_t num_bufs)
 {
-    info("tx_batch");
+    //info("tx_batch");
     struct tx_queue *txq = ((struct tx_queue*)(ix_dev->tx_queues)) + queue_id;
     //uint16_t tx_index = txq->tx_index;
     uint16_t clean_index = txq->clean_index;
@@ -342,6 +342,7 @@ uint32_t tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
             volatile union ixgbe_adv_tx_desc *txd = txq->descriptors + cleanup_to;
             uint32_t status = txd->wb.status;
             if(status & IXGBE_ADVTXD_STAT_DD){
+		    //info("yes");
                     int32_t i = clean_index;
                     while(true){
                             struct pkt_buf *buf = txq->virtual_address[i];
@@ -371,7 +372,7 @@ uint32_t tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
             txd->read.olinfo_status = buf->size << IXGBE_ADVTXD_PAYLEN_SHIFT;
     }
     set_reg32(ix_dev->addr,IXGBE_TDT(queue_id),txq->tx_index);
-    info("end: tx_batch");
+    //info("end: tx_batch");
     return sent;
 }
 
@@ -384,10 +385,13 @@ uint32_t ixgbe_get_link_speed(struct ixgbe_device *ix_dev)
         }
         switch(link_speed & IXGBE_LINKS_SPEED_82599){
                 case IXGBE_LINKS_SPEED_100_82599:
+		    info("100M");
                     return 100;
                 case IXGBE_LINKS_SPEED_1G_82599:
                     return 1000;
+		    info("1G");
                 case IXGBE_LINKS_SPEED_10G_82599:
+		    info("10G");		
                     return 10000;
                 default:
                     return 0;
@@ -509,7 +513,7 @@ struct ixgbe_device *start_ixgbe(const char *pci_addr,uint16_t rx_queues,uint16_
     
     ix_dev->rx_queues = calloc(rx_queues,sizeof(struct rx_queue) + sizeof(void *) * MAX_RX_QUEUE_ENTRIES);
     ix_dev->tx_queues = calloc(tx_queues,sizeof(struct tx_queue) + sizeof(void *) * MAX_TX_QUEUE_ENTRIES);
-
+    ix_dev->tx_batch = tx_batch;
     do_init_seq(ix_dev);
 
     info("finished all initilization process");

@@ -21,9 +21,9 @@
 #include "stats.h"
 #include "init.h"
 
-#define PKT_SIZE 1000 
+#define PKT_SIZE 64 
 
-const int BATCH_SIZE = 	250;
+const int BATCH_SIZE = 	60;
 
 static const uint8_t pkt_data[] = {
 	0x01,0x02,0x03,0x04,0x05,0x06,
@@ -73,7 +73,14 @@ static struct mempool *init_mempool()
 	}
 	return mempool;
 }
+struct ixgbe_device *ix_tx;
+struct ixgbe_stats stats,prev_stats;
 
+void get_stats(int signum)
+{	
+	read_stats(ix_tx,&stats);
+	print_tx_stats(&stats);
+}
 int main(int argc,char *argv[])
 {
 	if(argc != 2){
@@ -81,24 +88,40 @@ int main(int argc,char *argv[])
             	return -1;
     	}
 	struct mempool *memp = init_mempool();
-	uint64_t now_time;
+	struct sigaction act,oldact;
+	timer_t tid;
+	struct itimerspec itval;
 
+    	memset(&oldact, 0, sizeof(struct sigaction));
+	memset(&act,0,sizeof(struct sigaction));
+	act.sa_handler = get_stats;
+	act.sa_flags = SA_RESTART;
+	if(sigaction(SIGALRM, &act, &oldact) < 0) {
+        	perror("sigaction()");
+        	return -1;
+    	}
+	itval.it_value.tv_sec = 10;    
+   	itval.it_value.tv_nsec = 0;
+	itval.it_interval.tv_sec = 10;
+    	itval.it_interval.tv_nsec = 0;
     	//初期化全部
-    	struct ixgbe_device *ix_tx = do_ixgbe(argv[1],2,2);
+    	ix_tx = do_ixgbe(argv[1],1,1);
 
-    	struct ixgbe_stats stats,prev_stats;
 
+	struct pkt_buf *buf[BATCH_SIZE];
+	alloc_pkt_buf_batch(memp,buf,BATCH_SIZE);
     	clear_stats(&stats);
 	clear_stats(&prev_stats);
-	int i=0;	
-	uint32_t seq_num = 0;
-	struct pkt_buf *buf[BATCH_SIZE];
-	uint32_t counter=0;
-    	uint64_t prev_time = monotonic_time();
-	alloc_pkt_buf_batch(memp,buf,BATCH_SIZE);
-	// do sleep in a second for a preparation of allocating pkt buffer
-	sleep(1);
-	
+	sleep(3);
+	if(timer_create(CLOCK_REALTIME, NULL, &tid) < 0) {
+        	perror("timer_create");
+        	return -1;
+    	}
+ 
+    	if(timer_settime(tid, 0, &itval, NULL) < 0) {
+        	perror("timer_settime");
+        	return -1;
+    	}
 	while(true){
 		//receiveの準備
 		//transmitの準備
@@ -106,22 +129,13 @@ int main(int argc,char *argv[])
 		//for(uint32_t i=0;i<BATCH_SIZE;i++){
 		//	*(uint32_t*)(buf[i]->data + PKT_SIZE - 4) = seq_num++;
 		//}
-		//sleep(1);
-		//uint32_t tx_b = tx_batch(ix_tx,0,buf,BATCH_SIZE);
-		tx_batch(ix_tx,0,buf,BATCH_SIZE);
-		//tx_batch(ix_tx,1,buf,BATCH_SIZE);
-		now_time = monotonic_time();
-		if(now_time - prev_time > 1000*1000*1000){	
-			i++; 
-			read_stats(ix_tx,&stats);
-			print_tx_stats(&stats);
-			if(i==3){
-				return 0;
-			}
-		}
-		alloc_pkt_buf_batch(memp,buf,BATCH_SIZE);
-		//sleep(1);	
+
+		inline_tx_batch(ix_tx,0,buf,BATCH_SIZE);
+		alloc_pkt_buf_batch(memp,buf,BATCH_SIZE);	
+		sleep(1);
 	}
+	timer_delete(tid);
+    	sigaction(SIGALRM, &oldact, NULL);
 	return 0;
 }
 

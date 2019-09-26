@@ -39,9 +39,4 @@ void print_rx_stats(struct ixgbe_stats *ix_stats)
     printf("RX pkt: %d\n",ix_stats->rx_pkts_num);
     printf("%ld bytes\n",ix_stats->rx_bytes);
 }
-uint64_t monotonic_time(){
-    struct timespec timespec;
-    clock_gettime(CLOCK_MONOTONIC,&timespec);
-    return timespec.tv_sec * 1000 * 1000 * 1000 + timespec.tv_nsec;
-}
 

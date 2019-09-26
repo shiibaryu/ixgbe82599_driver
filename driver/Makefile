@@ -1,10 +1,10 @@
 objs = app.o init.o lib.o vfio.o stats.o pci.o
 
 app: $(objs)
-	gcc -Wall -O2 -o app $(objs)
+	gcc -Wall -O2 -o app $(objs) -lrt
 
 app.o: app.c
-	gcc -c app.c
+	gcc -c -lrt app.c 
 
 init.o: init.c
 	gcc -c init.c
