@@ -1,10 +1,10 @@
-objs = app.o init.o lib.o vfio.o stats.o pci.o
+objs = through.o init.o lib.o vfio.o stats.o pci.o
 
-app: $(objs)
-	gcc -Wall -O2 -o app $(objs) -lrt
+through: $(objs)
+	gcc -Wall -O2 -o through $(objs) -lrt
 
-app.o: app.c
-	gcc -c -lrt app.c 
+through.o: through.c
+	gcc -c -lrt through.c 
 
 init.o: init.c
 	gcc -c init.c
@@ -21,7 +21,7 @@ stats.o: stats.c
 pci.o: pci.c
 	gcc -c pci.c
 
-app.o: init.h lib.h vfio.h stats.h pci.h ixgbe.h
+through.o: init.h lib.h vfio.h stats.h pci.h ixgbe.h
 
 .PHONY: clean
 clean:

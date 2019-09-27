@@ -31,7 +31,7 @@ transmitの初期化
 const int MAX_RX_QUEUE_ENTRIES = 4096;
 const int MAX_TX_QUEUE_ENTRIES = 4096;
 
-const int NUM_RX_QUEUE_ENTRIES = 512;
+const int NUM_RX_QUEUE_ENTRIES = 1012;
 const int NUM_TX_QUEUE_ENTRIES = 512;
 
 const int PKT_BUF_ENTRY_SIZE = 2048;

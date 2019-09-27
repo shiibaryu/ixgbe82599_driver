@@ -21,9 +21,9 @@
 #include "stats.h"
 #include "init.h"
 
-#define PKT_SIZE 1200 
+#define PKT_SIZE 1100
 
-const int BATCH_SIZE = 	60;
+const int BATCH_SIZE = 	64;
 
 static const uint8_t pkt_data[] = {
 	0x01,0x02,0x03,0x04,0x05,0x06,
@@ -92,6 +92,7 @@ int main(int argc,char *argv[])
 	//struct ixgbe_device *ix_tx;
 	//struct ixgbe_stats stats,prev_stats;
 	struct mempool *memp = init_mempool();
+	//struct mempool *memp2 = init_mempool();
 	struct sigaction act,oldact;
 	timer_t tid;
 	struct itimerspec itval;
@@ -113,7 +114,10 @@ int main(int argc,char *argv[])
 
 
 	struct pkt_buf *buf[BATCH_SIZE];
+	//struct pkt_buf *buf2[BATCH_SIZE];
 	alloc_pkt_buf_batch(memp,buf,BATCH_SIZE);
+	//alloc_pkt_buf_batch(memp2,buf2,BATCH_SIZE);
+	uint64_t seq_num=0;
     	clear_stats(&stats);
 	clear_stats(&prev_stats);
 	sleep(1);
@@ -133,10 +137,14 @@ int main(int argc,char *argv[])
 		//for(uint32_t i=0;i<BATCH_SIZE;i++){
 		//	*(uint32_t*)(buf[i]->data + PKT_SIZE - 4) = seq_num++;
 		//}
-		
-		inline_tx_batch(ix_tx,0,buf,BATCH_SIZE);
+				
 		alloc_pkt_buf_batch(memp,buf,BATCH_SIZE);
-		sleep(0.3);	
+		inline_tx_batch(ix_tx,0,buf,BATCH_SIZE);
+		//alloc_pkt_buf_batch(memp,buf,BATCH_SIZE);
+		//inline_tx_batch(ix_tx,1,buf2,BATCH_SIZE);
+		//alloc_pkt_buf_batch(memp2,buf2,BATCH_SIZE);
+
+		sleep(0.18);	
 	}
 	timer_delete(tid);
     	sigaction(SIGALRM, &oldact, NULL);

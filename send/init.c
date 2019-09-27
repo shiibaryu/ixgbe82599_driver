@@ -37,7 +37,7 @@ const int NUM_TX_QUEUE_ENTRIES = 512;
 const int PKT_BUF_ENTRY_SIZE = 2048;
 const int MIN_MEMPOOL_ENTRIES = 4096;
 
-const int TX_CLEAN_BATCH = 22;
+const int TX_CLEAN_BATCH = 32;
 
 volatile int VFIO_CHK = 0;
 
@@ -324,7 +324,7 @@ uint32_t tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
 {
     //info("tx_batch");
     struct tx_queue *txq = ((struct tx_queue*)(ix_dev->tx_queues)) + queue_id;
-    //uint16_t tx_index = txq->tx_index;
+    uint16_t tx_index = txq->tx_index;
     uint16_t clean_index = txq->clean_index;
 
     while(true){
