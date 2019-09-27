@@ -118,3 +118,15 @@ static inline uint8_t read_io8(int fd,size_t offset){
 }
 
 
+/*static inline uint32_t alloc_pkt_buf_batch(struct mempool *mempool,struct pkt_buf *buf[],uint32_t num_bufs)
+{
+   if(mempool->free_stack_top < num_bufs){
+           num_bufs = mempool->free_stack_top;
+           pkt_buf_free(buf);
+   }
+    for(uint32_t i=0;i<num_bufs;i++){
+            uint32_t entry_id = mempool->free_stack[--mempool->free_stack_top];
+            buf[i] = (struct pkt_buf*)(((uint8_t*)mempool->base_addr) + entry_id * mempool->buf_size);
+    }
+    return num_bufs;
+}*/

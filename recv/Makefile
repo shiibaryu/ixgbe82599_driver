@@ -25,4 +25,4 @@ recv.o: init.h lib.h vfio.h stats.h pci.h ixgbe.h
 
 .PHONY: clean
 clean:
-	rm -f hello $(objs)
+	rm -f recv $(objs)

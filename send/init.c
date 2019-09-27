@@ -37,7 +37,7 @@ const int NUM_TX_QUEUE_ENTRIES = 512;
 const int PKT_BUF_ENTRY_SIZE = 2048;
 const int MIN_MEMPOOL_ENTRIES = 4096;
 
-const int TX_CLEAN_BATCH = 60;
+const int TX_CLEAN_BATCH = 22;
 
 volatile int VFIO_CHK = 0;
 
@@ -328,7 +328,7 @@ uint32_t tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
     uint16_t clean_index = txq->clean_index;
 
     while(true){
-            int32_t cleanable = txq->tx_index - clean_index;
+            int64_t cleanable = txq->tx_index - clean_index;
             if(cleanable < 0){
                     cleanable = txq->num_entries + cleanable;
             }
@@ -382,7 +382,7 @@ uint32_t ixgbe_get_link_speed(struct ixgbe_device *ix_dev)
         uint32_t link_speed = get_reg32(ix_dev->addr,IXGBE_LINKS);
         if(!(link_speed & IXGBE_LINKS_UP)){
                 return 0;
-        }
+    	}    
         switch(link_speed & IXGBE_LINKS_SPEED_82599){
                 case IXGBE_LINKS_SPEED_100_82599:
 		    info("100M");
@@ -538,4 +538,3 @@ struct ixgbe_device *do_ixgbe(const char *pci_addr,uint16_t rx_queue,uint16_t tx
 
     return start_ixgbe(pci_addr,rx_queue,tx_queue);
 }
-

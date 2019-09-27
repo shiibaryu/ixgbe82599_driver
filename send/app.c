@@ -21,9 +21,9 @@
 #include "stats.h"
 #include "init.h"
 
-#define PKT_SIZE 1000 
+#define PKT_SIZE 64 
 
-const int BATCH_SIZE = 	250;
+const int BATCH_SIZE = 	60;
 
 static const uint8_t pkt_data[] = {
 	0x01,0x02,0x03,0x04,0x05,0x06,
