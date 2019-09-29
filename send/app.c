@@ -115,12 +115,9 @@ int main(int argc,char *argv[])
 			i++; 
 			read_stats(ix_tx,&stats);
 			print_tx_stats(&stats);
-			if(i==3){
-				return 0;
-			}
 		}
 		alloc_pkt_buf_batch(memp,buf,BATCH_SIZE);
-		//sleep(1);	
+		sleep(1);	
 	}
 	return 0;
 }

@@ -21,9 +21,9 @@
 #include "stats.h"
 #include "init.h"
 
-#define PKT_SIZE 1100
+#define PKT_SIZE 1210
 
-const int BATCH_SIZE = 	64;
+int BATCH_SIZE; 
 
 static const uint8_t pkt_data[] = {
 	0x01,0x02,0x03,0x04,0x05,0x06,
@@ -85,18 +85,18 @@ void get_stats(int signum)
 
 int main(int argc,char *argv[])
 {
-	if(argc != 2){
-		printf("Usage: %s <pci bus id 1> <pci bus id 2>\n",argv[0]);
+	if(argc != 3){
+		printf("Usage: %s <pci bus id>\n",argv[0]);
             	return -1;
     	}
 	//struct ixgbe_device *ix_tx;
 	//struct ixgbe_stats stats,prev_stats;
+	BATCH_SIZE = atoi(argv[2]);
 	struct mempool *memp = init_mempool();
 	//struct mempool *memp2 = init_mempool();
 	struct sigaction act,oldact;
 	timer_t tid;
 	struct itimerspec itval;
-
     	memset(&oldact, 0, sizeof(struct sigaction));
 	memset(&act,0,sizeof(struct sigaction));
 	act.sa_handler = get_stats;
@@ -110,7 +110,7 @@ int main(int argc,char *argv[])
 	itval.it_interval.tv_sec = 10;
     	itval.it_interval.tv_nsec = 0;
     	
-	ix_tx = do_ixgbe(argv[1],1,1);
+	ix_tx = do_ixgbe(argv[1],2,2);
 
 
 	struct pkt_buf *buf[BATCH_SIZE];
@@ -141,10 +141,12 @@ int main(int argc,char *argv[])
 		alloc_pkt_buf_batch(memp,buf,BATCH_SIZE);
 		inline_tx_batch(ix_tx,0,buf,BATCH_SIZE);
 		//alloc_pkt_buf_batch(memp,buf,BATCH_SIZE);
-		//inline_tx_batch(ix_tx,1,buf2,BATCH_SIZE);
+		//sleep(1);	
 		//alloc_pkt_buf_batch(memp2,buf2,BATCH_SIZE);
+		//inline_tx_batch(ix_tx,1,buf2,BATCH_SIZE);
 
 		sleep(0.18);	
+
 	}
 	timer_delete(tid);
     	sigaction(SIGALRM, &oldact, NULL);
