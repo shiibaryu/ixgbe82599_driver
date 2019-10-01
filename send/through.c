@@ -23,7 +23,7 @@
 
 #define PKT_SIZE 1210
 
-int BATCH_SIZE; 
+#define BATCH_SIZE 1 
 
 static const uint8_t pkt_data[] = {
 	0x01,0x02,0x03,0x04,0x05,0x06,
@@ -55,7 +55,7 @@ static uint16_t calc_ip_checksum(uint8_t *data,uint32_t len)
 	return ~((uint16_t)cs);
 }
 
-static struct mempool *init_mempool()
+static struct mempool *init_mempool(int size)
 {
 	const int NUM_BUFS = 2048;
 	struct mempool *mempool = allocate_mempool_mem(NUM_BUFS,0);
@@ -63,7 +63,7 @@ static struct mempool *init_mempool()
 	
 	for(int id=0;id < NUM_BUFS;id++){
 		struct pkt_buf *buf = alloc_pkt_buf(mempool);
-		buf->size = PKT_SIZE;
+		buf->size = size;
 		memcpy(buf->data,pkt_data,sizeof(pkt_data));
 		*(uint16_t*)(buf->data + 24) = calc_ip_checksum(buf->data + 14,20);
 		bufs[id] = buf;
@@ -91,8 +91,8 @@ int main(int argc,char *argv[])
     	}
 	//struct ixgbe_device *ix_tx;
 	//struct ixgbe_stats stats,prev_stats;
-	BATCH_SIZE = atoi(argv[2]);
-	struct mempool *memp = init_mempool();
+	int size = atoi(argv[2]);
+	struct mempool *memp = init_mempool(size);
 	//struct mempool *memp2 = init_mempool();
 	struct sigaction act,oldact;
 	timer_t tid;
@@ -145,7 +145,7 @@ int main(int argc,char *argv[])
 		//alloc_pkt_buf_batch(memp2,buf2,BATCH_SIZE);
 		//inline_tx_batch(ix_tx,1,buf2,BATCH_SIZE);
 
-		sleep(0.18);	
+		//sleep(0.15);	
 
 	}
 	timer_delete(tid);

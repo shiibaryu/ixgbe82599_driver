@@ -108,7 +108,6 @@ uint32_t alloc_pkt_buf_batch(struct mempool *mempool,struct pkt_buf *buf[],uint3
 {
    if(mempool->free_stack_top < num_bufs){
            num_bufs = mempool->free_stack_top;
-           pkt_buf_free(buf);
    }
     for(uint32_t i=0;i<num_bufs;i++){
             uint32_t entry_id = mempool->free_stack[--mempool->free_stack_top];

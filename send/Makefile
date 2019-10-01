@@ -1,10 +1,10 @@
 objs = through.o init.o lib.o vfio.o stats.o pci.o
 
 through: $(objs)
-	gcc -Wall -O2 -o through $(objs) -lrt
+	gcc -Wall -O2 -g -o through $(objs) -lrt
 
 through.o: through.c
-	gcc -c -lrt through.c 
+	gcc -g -c -lrt through.c 
 
 init.o: init.c
 	gcc -c init.c

@@ -37,7 +37,7 @@ const int NUM_TX_QUEUE_ENTRIES = 512;
 const int PKT_BUF_ENTRY_SIZE = 2048;
 const int MIN_MEMPOOL_ENTRIES = 4096;
 
-const int TX_CLEAN_BATCH = 32;
+const int TX_CLEAN_BATCH = 10;
 
 volatile int VFIO_CHK = 0;
 
@@ -53,7 +53,6 @@ void init_link(struct ixgbe_device *ix_dev)
     info("end: init_link");
 }
 
-//特定のレジスタをreadすると初期化されるっぽい？？？
 void init_stats(struct ixgbe_device *ix_dev)
 {
     info("start: init_stats");
@@ -82,8 +81,8 @@ void init_rx_reg(struct ixgbe_device *ix_dev)
     //broadcastのセット FCTRL->filter control register(receive register)
     //BAM -> broadcast accept mode
     set_flag32(ix_dev->addr,IXGBE_FCTRL,IXGBE_FCTRL_BAM);
-    //jamboフレーム5000?
-    //set_reg32(ixgbe->dev,IXGBE_MAXFRS,5000);
+    //jamboフレーム5000
+    set_reg32(ix_dev->addr,IXGBE_MAXFRS,5000);
 
     info("end: init_tx_reg");
 }
@@ -110,11 +109,8 @@ void init_rx_queue(struct ixgbe_device *ix_dev)
        //DMAアクティベーション初期の時、メモリにアクセスされることを防ぐために仮想アドレスを初期化?
         memset(dma_addr.virt_addr,-1,ring_size);
 
-        //baseアドレスの計算
         set_reg32(ix_dev->addr,IXGBE_RDBAL(i),(uint32_t)(0xFFFFFFFFull & dma_addr.phy_addr));
         set_reg32(ix_dev->addr,IXGBE_RDBAH(i),(uint32_t)(dma_addr.phy_addr >> 32));
-
-        //長さの計算
         set_reg32(ix_dev->addr,IXGBE_RDLEN(i),ring_size);
 
         //headもtailも先頭
@@ -123,6 +119,7 @@ void init_rx_queue(struct ixgbe_device *ix_dev)
 	struct rx_queue *rxq = ((struct rx_queue*)(ix_dev->rx_queues)) + i;
 	rxq->num_entries = NUM_RX_QUEUE_ENTRIES;
 	rxq->rx_index = 0;
+	//割り当てた仮想アドレスをvoid descriptorに入れる
 	rxq->descriptors = (union ixgbe_adv_rx_desc*)dma_addr.virt_addr;
     }
 
@@ -182,14 +179,9 @@ void init_tx_queue(struct ixgbe_device *ix_dev)
         uint32_t tx_ring = sizeof(union ixgbe_adv_tx_desc)*NUM_TX_QUEUE_ENTRIES;
         struct dma_address dma_addr = allocate_dma_address(tx_ring,VFIO_CHK);
         
-        //rxの時と同様例のテクニック
         memset(dma_addr.virt_addr,-1,tx_ring);
-        
-        //baseアドレスの設定
         set_reg32(ix_dev->addr,IXGBE_TDBAL(i),(uint32_t)(dma_addr.phy_addr & 0xFFFFFFFFul));
         set_reg32(ix_dev->addr,IXGBE_TDBAH(i),(uint32_t)(dma_addr.phy_addr >> 32));
-
-        //長さセット
         set_reg32(ix_dev->addr,IXGBE_TDLEN(i),tx_ring);
         //set_flag32(ix_dev->addr,IXGBE_TXDCTL(i),IXGBE_TXDCRL_ENABLE);
         
