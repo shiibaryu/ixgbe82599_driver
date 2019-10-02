@@ -89,11 +89,8 @@ int main(int argc,char *argv[])
 		printf("Usage: %s <pci bus id>\n",argv[0]);
             	return -1;
     	}
-	//struct ixgbe_device *ix_tx;
-	//struct ixgbe_stats stats,prev_stats;
 	int size = atoi(argv[2]);
 	struct mempool *memp = init_mempool(size);
-	//struct mempool *memp2 = init_mempool();
 	struct sigaction act,oldact;
 	timer_t tid;
 	struct itimerspec itval;
@@ -114,9 +111,8 @@ int main(int argc,char *argv[])
 
 
 	struct pkt_buf *buf[BATCH_SIZE];
-	//struct pkt_buf *buf2[BATCH_SIZE];
 	alloc_pkt_buf_batch(memp,buf,BATCH_SIZE);
-	//alloc_pkt_buf_batch(memp2,buf2,BATCH_SIZE);
+
 	uint64_t seq_num=0;
     	clear_stats(&stats);
 	clear_stats(&prev_stats);
@@ -131,22 +127,8 @@ int main(int argc,char *argv[])
         	return -1;
     	}
 	while(true){
-		//receiveの準備
-		//transmitの準備
-		//statの更新
-		//for(uint32_t i=0;i<BATCH_SIZE;i++){
-		//	*(uint32_t*)(buf[i]->data + PKT_SIZE - 4) = seq_num++;
-		//}
-				
 		alloc_pkt_buf_batch(memp,buf,BATCH_SIZE);
 		inline_tx_batch(ix_tx,0,buf,BATCH_SIZE);
-		//alloc_pkt_buf_batch(memp,buf,BATCH_SIZE);
-		//sleep(1);	
-		//alloc_pkt_buf_batch(memp2,buf2,BATCH_SIZE);
-		//inline_tx_batch(ix_tx,1,buf2,BATCH_SIZE);
-
-		//sleep(0.15);	
-
 	}
 	timer_delete(tid);
     	sigaction(SIGALRM, &oldact, NULL);
