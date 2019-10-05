@@ -18,6 +18,7 @@
 #include "struct.h"
 #include "vfio.h"
 #include "pci.h"
+
 /*
 NICへの割り込み禁止
 デバイスのリセットとConfigurationレジスタの設定
@@ -37,7 +38,7 @@ const int NUM_TX_QUEUE_ENTRIES = 512;
 const int PKT_BUF_ENTRY_SIZE = 2048;
 const int MIN_MEMPOOL_ENTRIES = 4096;
 
-const int TX_CLEAN_BATCH = 10;
+const int TX_CLEAN_BATCH = 64;
 
 volatile int VFIO_CHK = 0;
 
@@ -312,11 +313,10 @@ uint32_t rx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
 }
 
 
-uint32_t tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *bufs[],uint32_t num_bufs)
+void tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *bufs[],uint32_t num_bufs)
 {
-    //info("tx_batch");
     struct tx_queue *txq = ((struct tx_queue*)(ix_dev->tx_queues)) + queue_id;
-    uint16_t tx_index = txq->tx_index;
+    //uint16_t tx_index = txq->tx_index;
     uint16_t clean_index = txq->clean_index;
 
     while(true){
@@ -334,15 +334,14 @@ uint32_t tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
             volatile union ixgbe_adv_tx_desc *txd = txq->descriptors + cleanup_to;
             uint32_t status = txd->wb.status;
             if(status & IXGBE_ADVTXD_STAT_DD){
-		    //info("yes");
-                    int32_t i = clean_index;
+                    //int32_t i = clean_index;
                     while(true){
-                            struct pkt_buf *buf = txq->virtual_address[i];
+                            struct pkt_buf *buf = txq->virtual_address[clean_index];
                             pkt_buf_free(buf);
-                            if(i==cleanup_to){
+                            if(clean_index==cleanup_to){
                                     break;
                             }
-                            i = wrap_ring(i,txq->num_entries);
+                            clean_index = wrap_ring(clean_index,txq->num_entries);
                     }
                     clean_index = wrap_ring(cleanup_to,txq->num_entries);
             }
@@ -364,8 +363,7 @@ uint32_t tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *
             txd->read.olinfo_status = buf->size << IXGBE_ADVTXD_PAYLEN_SHIFT;
     }
     set_reg32(ix_dev->addr,IXGBE_TDT(queue_id),txq->tx_index);
-    //info("end: tx_batch");
-    return sent;
+    //return sent;
 }
 
 uint32_t ixgbe_get_link_speed(struct ixgbe_device *ix_dev)

@@ -23,7 +23,10 @@
 
 #define PKT_SIZE 1210
 
-#define BATCH_SIZE 1 
+#define BATCH_SIZE 68 
+
+#define wrap_ring(index,ring_size) (uint16_t)((index+1)&(ring_size-1))
+const int CLEAN_BATCH = 64;
 
 static const uint8_t pkt_data[] = {
 	0x01,0x02,0x03,0x04,0x05,0x06,
@@ -82,6 +85,64 @@ void get_stats(int signum)
 	print_tx_stats(&stats);
 	exit(1);
 }
+static void buf_free(struct pkt_buf *buf)
+{
+    struct mempool *mempool = buf->mempool;
+    mempool->free_stack[mempool->free_stack_top++] = buf->mempool_idx;
+}
+
+static void transmit(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *bufs[],uint32_t num_bufs)
+{
+    struct tx_queue *txq = ((struct tx_queue*)(ix_dev->tx_queues)) + queue_id;
+    //uint16_t tx_index = txq->tx_index;
+    uint16_t clean_index = txq->clean_index;
+
+    while(true){
+            int64_t cleanable = txq->tx_index - clean_index;
+            if(cleanable < 0){
+                    cleanable = txq->num_entries + cleanable;
+            }
+            if(cleanable < CLEAN_BATCH){
+                    break;
+            }
+            int cleanup_to = clean_index + CLEAN_BATCH - 1;
+            if(cleanup_to >= txq->num_entries){
+                    cleanup_to -= txq->num_entries;
+            }
+            volatile union ixgbe_adv_tx_desc *txd = txq->descriptors + cleanup_to;
+            uint32_t status = txd->wb.status;
+            if(status & IXGBE_ADVTXD_STAT_DD){
+                    //int32_t i = clean_index;
+                    while(true){
+                            struct pkt_buf *buf = txq->virtual_address[clean_index];
+                           // pkt_buf_free(buf);
+                            buf_free(buf);
+                            if(clean_index==cleanup_to){
+                                    break;
+                            }
+                            clean_index = wrap_ring(clean_index,txq->num_entries);
+                    }
+                    clean_index = wrap_ring(cleanup_to,txq->num_entries);
+            }
+            else{break;}
+    }
+    txq->clean_index = clean_index;
+    uint32_t sent;
+    for(sent=0;sent<num_bufs;sent++){
+            uint32_t next_index = wrap_ring(txq->tx_index,txq->num_entries);
+            if(clean_index == next_index){
+                    break;
+            }
+            struct pkt_buf *buf = bufs[sent];
+            txq->virtual_address[txq->tx_index] = (void *)buf;
+            volatile union ixgbe_adv_tx_desc *txd = txq->descriptors + txq->tx_index;
+            txq->tx_index = next_index;
+            txd->read.buffer_addr = buf->buf_addr_phy + offsetof(struct pkt_buf,data);
+            txd->read.cmd_type_len = IXGBE_ADVTXD_DCMD_EOP | IXGBE_ADVTXD_DCMD_RS | IXGBE_ADVTXD_DCMD_IFCS | IXGBE_ADVTXD_DCMD_DEXT | IXGBE_ADVTXD_DTYP_DATA | buf->size;
+            txd->read.olinfo_status = buf->size << IXGBE_ADVTXD_PAYLEN_SHIFT;
+    }
+    set_reg32(ix_dev->addr,IXGBE_TDT(queue_id),txq->tx_index);
+}
 
 int main(int argc,char *argv[])
 {
@@ -109,14 +170,12 @@ int main(int argc,char *argv[])
     	
 	ix_tx = do_ixgbe(argv[1],2,2);
 
-
 	struct pkt_buf *buf[BATCH_SIZE];
 	alloc_pkt_buf_batch(memp,buf,BATCH_SIZE);
 
 	uint64_t seq_num=0;
     	clear_stats(&stats);
 	clear_stats(&prev_stats);
-	sleep(1);
 	if(timer_create(CLOCK_REALTIME, NULL, &tid) < 0) {
         	perror("timer_create");
         	return -1;
@@ -127,8 +186,9 @@ int main(int argc,char *argv[])
         	return -1;
     	}
 	while(true){
+		//inline_tx_batch(ix_tx,0,buf,BATCH_SIZE);
+		transmit(ix_tx,0,buf,BATCH_SIZE);
 		alloc_pkt_buf_batch(memp,buf,BATCH_SIZE);
-		inline_tx_batch(ix_tx,0,buf,BATCH_SIZE);
 	}
 	timer_delete(tid);
     	sigaction(SIGALRM, &oldact, NULL);

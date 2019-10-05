@@ -17,7 +17,7 @@ struct ixgbe_device{
     int vfio_fd;  
     bool vfio;
     u64 iovamask;
-    uint32_t (*tx_batch)(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *bufs[],uint32_t num_bufs);    		
+    void (*tx_batch)(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *bufs[],uint32_t num_bufs);    		
 };
 
 struct dma_address{
@@ -59,7 +59,7 @@ struct ixgbe_stats{
         uint64_t tx_bytes;
 };
 
-static inline uint32_t inline_tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf **buf,uint32_t batch_size)
+static inline void inline_tx_batch(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf **buf,uint32_t batch_size)
 {
-	return ix_dev->tx_batch(ix_dev,queue_id,buf,batch_size);
+	ix_dev->tx_batch(ix_dev,queue_id,buf,batch_size);
 }

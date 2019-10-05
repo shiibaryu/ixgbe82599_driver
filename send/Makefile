@@ -7,10 +7,10 @@ through.o: through.c
 	gcc -g -c -lrt through.c 
 
 init.o: init.c
-	gcc -c init.c
+	gcc -c -O2 init.c
 
 lib.o: lib.c
-	gcc -c lib.c
+	gcc -c -O2 lib.c
 
 vfio.o: vfio.c
 	gcc -c vfio.c
