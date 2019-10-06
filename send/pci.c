@@ -18,7 +18,7 @@ void remove_driver(const char* pci_addr) {
 		return;
 	}
 	if (write(fd, pci_addr, strlen(pci_addr)) != (ssize_t) strlen(pci_addr)) {
-		//warn("failed to unload driver for device %s", pci_addr);
+		debug("failed to unload driver for device %s", pci_addr);
 	}
 	close(fd);
 }
@@ -27,8 +27,9 @@ void enable_dma(const char* pci_addr) {
 	char path[PATH_MAX];
 	snprintf(path, PATH_MAX, "/sys/bus/pci/devices/%s/config", pci_addr);
 	int fd = open(path, O_RDWR);
-	// write to the command register (offset 4) in the PCIe config space
-	// bit 2 is "bus master enable", see PCIe 3.0 specification section 7.5.1.1
+	if(fd < 0){
+		debug("failed to open /%s/config",pci_addr);
+	}
 	lseek(fd, 4, SEEK_SET);
 	uint16_t dma = 0;
 	read(fd, &dma, 2);

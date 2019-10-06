@@ -22,10 +22,12 @@
 #include "init.h"
 
 #define PKT_SIZE 1210
-
 #define BATCH_SIZE 68 
-
 #define wrap_ring(index,ring_size) (uint16_t)((index+1)&(ring_size-1))
+
+#define DCMD_DTYPE_FLAGS (IXGBE_ADVTXD_DTYP_DATA | IXGBE_ADVTXD_DCMD_IFCS | IXGBE_ADVTXD_DCMD_DEXT | IXGBE_ADVTXD_DCMD_EOP)
+
+#define cpy_data_to_desc(x) (x)
 
 const int CLEAN_BATCH = 64;
 
@@ -92,52 +94,65 @@ static inline void buf_free(struct pkt_buf *buf)
     mempool->free_stack[mempool->free_stack_top++] = buf->mempool_idx;
 }
 
+uint16_t clean_index;
+
+static inline void tx_clean(struct tx_queue *txq)
+{
+        int cleanup_to;
+	int64_t clean_up;
+        uint32_t status; 
+       	volatile union ixgbe_adv_tx_desc *txd;
+	clean_index = txq->clean_index;
+
+	while(true){
+		clean_up = txq->tx_index - clean_index;
+            	if(clean_up < 0){
+                	clean_up = txq->num_entries + clean_up;
+            	}
+            	if(clean_up < CLEAN_BATCH){
+                    	break;
+            	}
+        	cleanup_to = clean_index + CLEAN_BATCH - 1;
+            	if(cleanup_to >= txq->num_entries){
+                    	cleanup_to -= txq->num_entries;
+            	}
+            	txd = txq->descriptors + cleanup_to;
+            	status = txd->wb.status;
+            	if(status & IXGBE_ADVTXD_STAT_DD){
+                    	while(true){
+                           	struct pkt_buf *buf = txq->virtual_address[clean_index];
+                            	buf_free(buf);
+                            	if(clean_index==cleanup_to){
+                                    	break;
+                            	}
+                            	clean_index = wrap_ring(clean_index,txq->num_entries);
+                    	}
+                    	clean_index = wrap_ring(cleanup_to,txq->num_entries);
+            	}else{break;}		
+	}
+}
+
 static inline void transmit(struct ixgbe_device *ix_dev,uint16_t queue_id,struct pkt_buf *bufs[],uint32_t num_bufs)
 {
-    struct tx_queue *txq = ((struct tx_queue*)(ix_dev->tx_queues)) + queue_id;
-    uint16_t clean_index = txq->clean_index;
-
-    while(true){
-            int64_t cleanable = txq->tx_index - clean_index;
-            if(cleanable < 0){
-                    cleanable = txq->num_entries + cleanable;
-            }
-            if(cleanable < CLEAN_BATCH){
-                    break;
-            }
-            int cleanup_to = clean_index + CLEAN_BATCH - 1;
-            if(cleanup_to >= txq->num_entries){
-                    cleanup_to -= txq->num_entries;
-            }
-            volatile union ixgbe_adv_tx_desc *txd = txq->descriptors + cleanup_to;
-            uint32_t status = txd->wb.status;
-            if(status & IXGBE_ADVTXD_STAT_DD){
-                    while(true){
-                            struct pkt_buf *buf = txq->virtual_address[clean_index];
-                            buf_free(buf);
-                            if(clean_index==cleanup_to){
-                                    break;
-                            }
-                            clean_index = wrap_ring(clean_index,txq->num_entries);
-                    }
-                    clean_index = wrap_ring(cleanup_to,txq->num_entries);
-            }
-            else{break;}
-    }
-    txq->clean_index = clean_index;
+    uint32_t next_index;
     uint32_t sent;
+    volatile union ixgbe_adv_tx_desc *txd;
+
+    struct tx_queue *txq = ((struct tx_queue*)(ix_dev->tx_queues)) + queue_id;
+    tx_clean(txq);
+
     for(sent=0;sent<num_bufs;sent++){
-            uint32_t next_index = wrap_ring(txq->tx_index,txq->num_entries);
-            if(clean_index == next_index){
+            next_index = wrap_ring(txq->tx_index,txq->num_entries);
+            if(txq->tx_index == next_index){
                     break;
             }
             struct pkt_buf *buf = bufs[sent];
             txq->virtual_address[txq->tx_index] = (void *)buf;
-            volatile union ixgbe_adv_tx_desc *txd = txq->descriptors + txq->tx_index;
+            txd = txq->descriptors + txq->tx_index;
             txq->tx_index = next_index;
-            txd->read.buffer_addr = buf->buf_addr_phy + offsetof(struct pkt_buf,data);
-            txd->read.cmd_type_len = IXGBE_ADVTXD_DCMD_EOP | IXGBE_ADVTXD_DCMD_RS | IXGBE_ADVTXD_DCMD_IFCS | IXGBE_ADVTXD_DCMD_DEXT | IXGBE_ADVTXD_DTYP_DATA | buf->size;
-            txd->read.olinfo_status = buf->size << IXGBE_ADVTXD_PAYLEN_SHIFT;
+            txd->read.buffer_addr = cpy_data_to_desc(buf->buf_addr_phy + offsetof(struct pkt_buf,data));
+            txd->read.cmd_type_len = DCMD_DTYPE_FLAGS | buf->size;
+            txd->read.olinfo_status = cpy_data_to_desc(buf->size << IXGBE_ADVTXD_PAYLEN_SHIFT);
     }
     set_reg32(ix_dev->addr,IXGBE_TDT(queue_id),txq->tx_index);
 }
