@@ -1,2 +1,2 @@
 # ixgbe82599_driver
-My intel 10G NIC driver(ixgbe82599)
+This is a userspace driver of intel 10G NIC (ixgbe 82599)
