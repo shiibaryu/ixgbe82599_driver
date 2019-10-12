@@ -8,12 +8,10 @@ struct pkt_buf{
 
 struct ixgbe_device{
     uint8_t *addr;
-    void *tx_queues;
     void *rx_queues;
     const char *pci_addr;
     int device_id;
     uint16_t num_rx_queues;
-    uint16_t num_tx_queues;
     int vfio_fd;  
     bool vfio;
     u64 iovamask;
@@ -30,15 +28,6 @@ struct mempool{
     uint32_t num_entries;
     uint32_t free_stack_top;
     uint32_t free_stack[];
-};
-
-struct tx_queue{
-    volatile union ixgbe_adv_tx_desc *descriptors;
-    struct mempool *mempool;
-    uint16_t num_entries;
-    uint16_t clean_index;
-    uint16_t tx_index;
-    void *virtual_address[];
 };
 
 struct rx_queue{

@@ -23,6 +23,7 @@ uint32_t page_id = 1;
 
 
 static uintptr_t virt_to_phys(void* virt) {
+	int ret=0;
 	long pagesize = sysconf(_SC_PAGESIZE);
 	int fd = open("/proc/self/pagemap", O_RDONLY);
 	if(fd == -1){
@@ -31,7 +32,10 @@ static uintptr_t virt_to_phys(void* virt) {
 	// pagemap is an array of pointers for each normal-sized page
 	lseek(fd, (uintptr_t) virt / pagesize * sizeof(uintptr_t),SEEK_SET);
 	uintptr_t phy = 0;
-	read(fd, &phy, sizeof(phy));
+	ret = read(fd, &phy, sizeof(phy));
+	if(ret == -1){
+		perror("failed to read");
+	}
 	close(fd);
 	if (!phy) {
 		debug("failed to translate virtual address %p to physical address", virt);

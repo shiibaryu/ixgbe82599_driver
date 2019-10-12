@@ -21,7 +21,7 @@
 #include "stats.h"
 #include "init.h"
 
-#define PKT_SIZE 64 
+#define PKT_SIZE 60 
 
 const int BATCH_SIZE = 	60;
 
@@ -40,7 +40,7 @@ static const uint8_t pkt_data[] = {
 	(PKT_SIZE - 20 - 14) >> 8,
 	(PKT_SIZE - 20 - 14) & 0xFF,
 	0x00,0x00,
-	's','i','i','b'
+	's','i','b','i'
 };
 
 static uint16_t calc_ip_checksum(uint8_t *data,uint32_t len)
@@ -111,6 +111,7 @@ int main(int argc,char *argv[])
 		tx_batch(ix_tx,0,buf,BATCH_SIZE);
 		//tx_batch(ix_tx,1,buf,BATCH_SIZE);
 		now_time = monotonic_time();
+	        sleep(1);
 		if(now_time - prev_time > 1000*1000*1000){	
 			i++; 
 			read_stats(ix_tx,&stats);
